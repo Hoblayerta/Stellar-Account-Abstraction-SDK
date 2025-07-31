@@ -1,0 +1,325 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { StellarSocialSDK } from '../lib/sdk';
+import toast, { Toaster } from 'react-hot-toast';
+import { 
+  UserIcon, 
+  CurrencyDollarIcon, 
+  GlobeAltIcon,
+  PhoneIcon,
+  KeyIcon,
+  CheckCircleIcon
+} from '@heroicons/react/24/outline';
+
+const CONTRACT_ID = 'CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW';
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+export default function Home() {
+  const [sdk, setSdk] = useState<any>(null);
+  const [account, setAccount] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [balances, setBalances] = useState<any[]>([]);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  // Initialize SDK
+  useEffect(() => {
+    const initSDK = async () => {
+      if (!GOOGLE_CLIENT_ID) {
+        toast.error('Google Client ID not configured');
+        return;
+      }
+
+      const stellarSDK = new StellarSocialSDK({
+        contractId: CONTRACT_ID,
+        network: 'testnet',
+        googleClientId: GOOGLE_CLIENT_ID
+      });
+
+      await stellarSDK.initialize();
+      setSdk(stellarSDK);
+    };
+
+    initSDK();
+  }, []);
+
+  // Render Google button when SDK is ready
+  useEffect(() => {
+    if (sdk && googleButtonRef.current && !account) {
+      try {
+        // Clear any existing button
+        googleButtonRef.current.innerHTML = '';
+        
+        // Render Google Sign-In button
+        sdk.googleProvider?.renderButton(googleButtonRef.current, {
+          type: 'standard',
+          shape: 'rectangular',
+          theme: 'filled_blue',
+          text: 'signin_with',
+          size: 'large',
+          width: '100%',
+        });
+      } catch (error) {
+        console.error('Failed to render Google button:', error);
+      }
+    }
+  }, [sdk, account]);
+
+  const handleGoogleAuth = async () => {
+    if (!sdk) {
+      toast.error('SDK not initialized');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      toast.loading('Authenticating with Google...', { id: 'auth' });
+      
+      const result = await sdk.authenticateWithGoogle();
+      
+      if (result.success && result.account) {
+        setAccount(result.account);
+        toast.success(`✅ Welcome ${result.account.data.authMethods[0]?.metadata?.name}!`, { id: 'auth' });
+        
+        // Load balances
+        const bal = await result.account.getBalance();
+        setBalances(bal);
+      } else {
+        toast.error(result.error || 'Authentication failed', { id: 'auth' });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Authentication failed', { id: 'auth' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFacebookAuth = async () => {
+    if (!sdk) return;
+    
+    setLoading(true);
+    try {
+      toast.loading('Authenticating with Facebook...', { id: 'auth' });
+      const result = await sdk.authenticateWithFacebook();
+      
+      if (result.success && result.account) {
+        setAccount(result.account);
+        toast.success('✅ Facebook connected!', { id: 'auth' });
+        
+        const bal = await result.account.getBalance();
+        setBalances(bal);
+      } else {
+        toast.error(result.error || 'Authentication failed', { id: 'auth' });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Authentication failed', { id: 'auth' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFreighterConnect = async () => {
+    if (!sdk) return;
+    
+    setLoading(true);
+    try {
+      toast.loading('Connecting to Freighter...', { id: 'auth' });
+      const result = await sdk.connectFreighter();
+      
+      if (result.success && result.account) {
+        setAccount(result.account);
+        toast.success('✅ Freighter connected!', { id: 'auth' });
+        
+        const bal = await result.account.getBalance();
+        setBalances(bal);
+      } else {
+        toast.error(result.error || 'Connection failed', { id: 'auth' });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Connection failed', { id: 'auth' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const disconnect = () => {
+    setAccount(null);
+    setBalances([]);
+    toast.success('Disconnected');
+  };
+
+  if (!GOOGLE_CLIENT_ID) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 max-w-md">
+          <h1 className="text-2xl font-bold text-white mb-4">⚠️ Configuration Required</h1>
+          <p className="text-red-200 mb-4">
+            Please add your Google Client ID to <code>.env.local</code>:
+          </p>
+          <div className="bg-black/30 rounded-xl p-4 font-mono text-white text-sm">
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_client_id_here
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      <Toaster position="top-right" />
+      
+      {/* Header */}
+      <header className="bg-white/10 backdrop-blur-md border-b border-white/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <GlobeAltIcon className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Stellar Social</h1>
+                <p className="text-purple-200 text-sm">Real Social Login for Stellar</p>
+              </div>
+            </div>
+            <div className="text-purple-200 text-xs">
+              {GOOGLE_CLIENT_ID && <CheckCircleIcon className="w-4 h-4 text-green-400 inline mr-1" />}
+              OAuth Configured
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {!account ? (
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-white mb-4">
+              Connect Your Real Accounts
+            </h2>
+            <p className="text-xl text-purple-200 mb-8">
+              Authentic OAuth integration with deterministic Stellar addresses
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto">
+              {/* Social Login Card */}
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+                <h3 className="text-xl font-semibold text-white mb-6">🔐 Real OAuth Login</h3>
+                
+                <div className="space-y-4">
+                  {/* Google OAuth Button */}
+                  <div className="space-y-2">
+                    <div ref={googleButtonRef} className="w-full"></div>
+                    <p className="text-xs text-purple-200">
+                      Uses Google Identity Services
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleFacebookAuth}
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3"
+                  >
+                    <span className="text-xl">📘</span>
+                    Facebook (Demo)
+                  </button>
+                </div>
+              </div>
+
+              {/* Crypto Wallet Card */}
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+                <h3 className="text-xl font-semibold text-white mb-6">🦊 Crypto Wallets</h3>
+                
+                <div className="space-y-4">
+                  <button
+                    onClick={handleFreighterConnect}
+                    disabled={loading}
+                    className="w-full bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3"
+                  >
+                    <span className="text-xl">🦊</span>
+                    Connect Freighter
+                  </button>
+
+                  <div className="text-purple-300 text-sm text-center">
+                    Rabet, xBull coming soon...
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {loading && (
+              <div className="mt-8 text-center">
+                <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl px-6 py-3">
+                  <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full"></div>
+                  <span className="text-white">Authenticating...</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* Account Info */}
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-white">Real Account Connected</h3>
+                <button
+                  onClick={disconnect}
+                  className="bg-red-500/20 hover:bg-red-500/30 text-red-200 px-4 py-2 rounded-xl transition-all"
+                >
+                  Disconnect
+                </button>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-purple-200 text-sm mb-2">Stellar Address</label>
+                  <div className="bg-black/30 rounded-xl p-4 font-mono text-white text-sm break-all">
+                    {account.publicKey}
+                  </div>
+                  <p className="text-xs text-purple-300 mt-1">
+                    Deterministically generated from your Google account
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-purple-200 text-sm mb-2">User Info</label>
+                  <div className="bg-black/30 rounded-xl p-3 text-white text-sm">
+                    {account.data.authMethods.map((method: any, index: number) => (
+                      <div key={index} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-400">✓</span>
+                          <span className="capitalize font-medium">{method.type}</span>
+                        </div>
+                        {method.metadata?.name && (
+                          <div className="text-purple-200">👤 {method.metadata.name}</div>
+                        )}
+                        {method.metadata?.email && (
+                          <div className="text-purple-200">📧 {method.metadata.email}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Balances */}
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <h3 className="text-xl font-semibold text-white mb-4">Account Balances</h3>
+              <div className="space-y-3">
+                {balances.map((balance, index) => (
+                  <div key={index} className="flex items-center justify-between bg-black/30 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <CurrencyDollarIcon className="w-6 h-6 text-yellow-400" />
+                      <span className="text-white font-medium">{balance.asset}</span>
+                    </div>
+                    <span className="text-2xl font-bold text-white">{parseFloat(balance.balance).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

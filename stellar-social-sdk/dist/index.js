@@ -7614,48 +7614,179 @@ class CryptoUtils {
 
 class GoogleAuthProvider {
     constructor(clientId) {
+        this.initialized = false;
+        if (!clientId) {
+            throw new Error('Google Client ID is required');
+        }
         this.clientId = clientId;
     }
+    /**
+     * Initialize Google Identity Services
+     */
     async initialize() {
         if (typeof window === 'undefined')
             return;
-        console.log('🔧 Initializing Google Auth Provider');
-    }
-    async authenticate() {
-        console.log('🔐 Authenticating with Google (MVP Mock)');
-        // Mock Google user for MVP testing
-        const mockGoogleUser = {
-            sub: `google_${Date.now()}`,
-            email: `user${Math.floor(Math.random() * 1000)}@gmail.com`,
-            name: 'Test User',
-            picture: 'https://example.com/avatar.jpg'
-        };
-        return {
-            type: 'google',
-            identifier: mockGoogleUser.email,
-            token: 'mock_google_token_' + Date.now(),
-            metadata: {
-                name: mockGoogleUser.name,
-                picture: mockGoogleUser.picture,
-                sub: mockGoogleUser.sub
-            }
-        };
-    }
-    async verifyToken(token) {
-        // For MVP, return mock verification
-        if (token.startsWith('mock_google_token')) {
-            return {
-                sub: 'google_123456789',
-                email: 'user@gmail.com',
-                name: 'Test User',
-                iss: 'accounts.google.com',
-                aud: this.clientId
-            };
+        if (this.initialized)
+            return;
+        console.log('🔧 Initializing Google Identity Services...');
+        // Load Google Identity Services
+        await this.loadGoogleIdentityServices();
+        // Initialize Google Sign-In
+        if (window.google?.accounts?.id) {
+            window.google.accounts.id.initialize({
+                client_id: this.clientId,
+                callback: this.handleCredentialResponse.bind(this),
+                auto_select: false,
+                cancel_on_tap_outside: true,
+            });
+            this.initialized = true;
+            console.log('✅ Google Identity Services initialized');
         }
-        throw new Error('Invalid Google token');
+        else {
+            throw new Error('Failed to load Google Identity Services');
+        }
     }
-    generateSeed(googleId) {
-        return CryptoUtils.generateSeed('google', googleId);
+    /**
+     * Load Google Identity Services script
+     */
+    loadGoogleIdentityServices() {
+        return new Promise((resolve, reject) => {
+            if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+                resolve();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://accounts.google.com/gsi/client';
+            script.async = true;
+            script.defer = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load Google Identity Services'));
+            document.head.appendChild(script);
+        });
+    }
+    /**
+     * Handle Google credential response
+     */
+    handleCredentialResponse(response) {
+        if (window.handleGoogleCredential) {
+            window.handleGoogleCredential(response);
+        }
+    }
+    /**
+     * Authenticate with Google - Real OAuth flow
+     */
+    async authenticate() {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+        return new Promise((resolve, reject) => {
+            // Set up global callback handler
+            window.handleGoogleCredential = async (response) => {
+                try {
+                    const userInfo = await this.verifyToken(response.credential);
+                    const authMethod = {
+                        type: 'google',
+                        identifier: userInfo.email,
+                        token: response.credential,
+                        metadata: {
+                            name: userInfo.name,
+                            picture: userInfo.picture,
+                            sub: userInfo.sub,
+                            email: userInfo.email,
+                            email_verified: userInfo.email_verified,
+                        }
+                    };
+                    console.log('✅ Google authentication successful:', userInfo.email);
+                    resolve(authMethod);
+                }
+                catch (error) {
+                    console.error('❌ Google authentication failed:', error);
+                    reject(error);
+                }
+            };
+            // Trigger Google Sign-In
+            if (window.google?.accounts?.id) {
+                window.google.accounts.id.prompt();
+            }
+            else {
+                reject(new Error('Google Identity Services not loaded'));
+            }
+        });
+    }
+    /**
+     * Render Google Sign-In button
+     */
+    renderButton(element, config = {}) {
+        if (!this.initialized || !window.google?.accounts?.id) {
+            throw new Error('Google Identity Services not initialized');
+        }
+        const defaultConfig = {
+            type: 'standard',
+            shape: 'rectangular',
+            theme: 'outline',
+            text: 'signin_with',
+            size: 'large',
+            logo_alignment: 'left',
+            width: '100%',
+        };
+        window.google.accounts.id.renderButton(element, { ...defaultConfig, ...config });
+    }
+    /**
+     * Verify Google JWT token
+     */
+    async verifyToken(token) {
+        try {
+            // Decode JWT without verification (for demo purposes)
+            // In production, verify signature with Google's public keys
+            const payload = this.decodeJWT(token);
+            // Basic validation
+            if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
+                throw new Error('Invalid token issuer');
+            }
+            if (payload.aud !== this.clientId) {
+                throw new Error('Invalid token audience');
+            }
+            if (payload.exp < Date.now() / 1000) {
+                throw new Error('Token expired');
+            }
+            return payload;
+        }
+        catch (error) {
+            throw new Error(`Token verification failed: ${error.message}`);
+        }
+    }
+    /**
+     * Decode JWT token (basic decoding)
+     */
+    decodeJWT(token) {
+        try {
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                throw new Error('Invalid JWT format');
+            }
+            const payload = parts[1];
+            const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+            return JSON.parse(decoded);
+        }
+        catch (error) {
+            throw new Error('Failed to decode JWT');
+        }
+    }
+    /**
+     * Generate deterministic seed from Google user ID
+     */
+    generateSeed(googleSub) {
+        return CryptoUtils.generateSeed('google', googleSub);
+    }
+    /**
+     * Sign out from Google
+     */
+    signOut() {
+        if (window.google?.accounts?.id) {
+            // Google Identity Services doesn't have direct sign out
+            // We'll handle this in the app level
+            console.log('Google sign out requested');
+        }
     }
 }
 
@@ -7721,7 +7852,9 @@ class StellarSocialSDK {
                 ? 'https://horizon-testnet.stellar.org'
                 : 'https://horizon.stellar.org'));
         // Initialize providers
-        this.googleProvider = new GoogleAuthProvider(config.googleClientId);
+        if (config.googleClientId) {
+            this.googleProvider = new GoogleAuthProvider(config.googleClientId);
+        }
         this.freighterProvider = new FreighterProvider();
     }
     /**
@@ -7735,17 +7868,29 @@ class StellarSocialSDK {
         console.log('✅ SDK initialized');
     }
     /**
-     * Authenticate with Google
+     * Authenticate with Google - REAL OAuth
      */
     async authenticateWithGoogle() {
         try {
-            console.log('🔐 Starting Google authentication...');
+            console.log('🔐 Starting real Google authentication...');
             if (!this.googleProvider) {
-                throw new Error('Google provider not configured');
+                throw new Error('Google provider not configured. Please provide googleClientId in config.');
             }
+            // Real Google OAuth flow
             const authMethod = await this.googleProvider.authenticate();
-            const account = await this.getOrCreateAccount(authMethod);
-            console.log('✅ Google authentication successful');
+            // Use Google sub (user ID) for deterministic keypair generation
+            const googleSub = authMethod.metadata?.sub;
+            if (!googleSub) {
+                throw new Error('Google user ID not found');
+            }
+            // Create deterministic keypair from Google user ID
+            const keypair = CryptoUtils.generateKeypair('google', googleSub);
+            const publicKey = keypair.publicKey();
+            console.log(`🔑 Generated deterministic address for Google user: ${publicKey}`);
+            console.log(`👤 Google user: ${authMethod.metadata?.name} (${authMethod.metadata?.email})`);
+            // Check if account exists or create new one
+            const account = await this.getOrCreateAccountWithKeypair(keypair, authMethod);
+            console.log('✅ Real Google authentication successful');
             return {
                 success: true,
                 account
@@ -7856,17 +8001,14 @@ class StellarSocialSDK {
     async getOrCreateAccount(authMethod) {
         let keypair;
         if (authMethod.type === 'freighter') {
-            // For Freighter, use the existing public key
             keypair = stellarSdk.Keypair.fromPublicKey(authMethod.identifier);
         }
         else {
-            // For social auth, generate deterministic keypair
             keypair = CryptoUtils.generateKeypair(authMethod.type, authMethod.identifier);
         }
         const publicKey = keypair.publicKey();
         console.log(`🔑 Generated address: ${publicKey}`);
         try {
-            // Check if account exists on blockchain
             await this.server.loadAccount(publicKey);
             console.log('📋 Loading existing account:', publicKey);
             const accountData = {
@@ -7878,9 +8020,29 @@ class StellarSocialSDK {
             return new StellarSocialAccount(accountData, this.server, this.contractId, this.network, authMethod.type !== 'freighter' ? keypair : undefined);
         }
         catch (error) {
-            // Account doesn't exist, create it
             console.log('🔨 Creating new account for:', authMethod.type);
             return await this.createNewAccount(keypair, authMethod);
+        }
+    }
+    /**
+     * Get or create account with specific keypair
+     */
+    async getOrCreateAccountWithKeypair(keypair, authMethod) {
+        const publicKey = keypair.publicKey();
+        try {
+            await this.server.loadAccount(publicKey);
+            console.log('📋 Loading existing account:', publicKey);
+            const accountData = {
+                publicKey,
+                authMethods: [authMethod],
+                createdAt: Date.now(),
+                recoveryContacts: []
+            };
+            return new StellarSocialAccount(accountData, this.server, this.contractId, this.network, keypair);
+        }
+        catch (error) {
+            console.log('🔨 Creating new account for Google user:', authMethod.metadata?.email);
+            return await this.createNewAccountWithKeypair(keypair, authMethod);
         }
     }
     /**
@@ -7901,7 +8063,27 @@ class StellarSocialSDK {
             recoveryContacts: []
         };
         const account = new StellarSocialAccount(accountData, this.server, this.contractId, this.network, authMethod.type !== 'freighter' ? keypair : undefined);
-        // Initialize with contract
+        await account.initializeWithContract();
+        return account;
+    }
+    /**
+     * Create new account with specific keypair
+     */
+    async createNewAccountWithKeypair(keypair, authMethod) {
+        const publicKey = keypair.publicKey();
+        if (this.network === 'testnet') {
+            console.log('💰 Funding testnet account...');
+            await this.fundTestnetAccount(publicKey);
+            console.log('⏳ Waiting for account creation...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        const accountData = {
+            publicKey,
+            authMethods: [authMethod],
+            createdAt: Date.now(),
+            recoveryContacts: []
+        };
+        const account = new StellarSocialAccount(accountData, this.server, this.contractId, this.network, keypair);
         await account.initializeWithContract();
         return account;
     }

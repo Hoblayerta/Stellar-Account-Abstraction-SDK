@@ -14,14 +14,16 @@ This is a Stellar Social Wallet project that enables social login authentication
 
 ### Stellar Social SDK
 - **Main SDK Class**: `StellarSocialSDK` in `stellar-social-sdk/src/index.ts`
-- **Auth Providers**: Google, Facebook (mock), Phone, and Freighter wallet support
+- **Real OAuth Integration**: Google OAuth using Google Identity Services (requires GOOGLE_CLIENT_ID)
+- **Auth Providers**: Google (real OAuth), Facebook (mock), Phone, and Freighter wallet support
 - **Account Management**: `StellarSocialAccount` class handles account operations
-- **Crypto Utils**: Deterministic keypair generation for social auth methods
+- **Crypto Utils**: Deterministic keypair generation using Google sub ID for consistency
 
 ### Demo App
-- Next.js 15 application with TypeScript
-- Uses the local stellar-social-sdk package
-- Demonstrates social authentication flows
+- Next.js 15 application with real Google OAuth integration
+- Uses the local stellar-social-sdk package (`file:../stellar-social-sdk`)
+- Google Identity Services script loaded for authentic OAuth flow
+- Requires `.env.local` with `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 
 ### Smart Contracts
 - Soroban smart contracts written in Rust
@@ -59,24 +61,49 @@ make clean           # Clean build artifacts
 ## Key Components
 
 ### Authentication Flow
-1. Users authenticate via social providers (Google, Facebook, Phone) or Freighter wallet
-2. SDK generates deterministic Stellar keypairs for social auth methods
-3. Smart contract manages auth methods and account recovery
-4. Accounts are funded on testnet via Friendbot
+1. **Google OAuth**: Real Google Identity Services integration using user's Google sub ID
+2. **Deterministic Addresses**: Uses Google sub ID (not email) for consistent keypair generation
+3. **Account Creation**: Auto-funds testnet accounts via Friendbot on first login
+4. **JWT Processing**: Demo app manually parses Google JWT tokens for user info
+
+### Google OAuth Setup
+- Requires Google Cloud Console project with OAuth 2.0 client ID
+- Demo app expects `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `.env.local`
+- SDK `googleProvider` is conditionally initialized only if `googleClientId` is provided
+- Uses `window.handleGoogleCredential` callback for OAuth response
 
 ### Network Configuration
 - Supports both testnet and mainnet
-- Default contract ID configured in `stellar-social-sdk/src/config.ts`
+- Default contract ID: `CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW`
 - Horizon server URLs automatically selected based on network
 
 ### Testing
 - Use testnet for development and testing
 - Phone verification uses mock code "123456"
 - Facebook auth is mocked for MVP
+- Google auth requires real OAuth setup
+
+## Configuration Requirements
+
+### Environment Variables (Demo App)
+Create `.env.local` in `demo-app/`:
+```env
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
+```
+
+### Google OAuth Setup
+1. Create project in Google Cloud Console
+2. Enable Google Identity Services
+3. Create OAuth 2.0 client ID for web application
+4. Add your domain to authorized origins
+5. Copy client ID to environment variable
 
 ## Important Notes
 
-- The SDK uses deterministic keypair generation for social auth methods
-- Freighter integration allows connecting existing Stellar wallets
-- Smart contracts use Soroban SDK v22.0.0
-- Demo app uses file-based dependency for the SDK (`file:../stellar-social-sdk`)
+- **Deterministic Keypairs**: Uses Google sub ID for consistent address generation
+- **Real OAuth**: Demo now uses authentic Google Identity Services integration
+- **Environment Required**: Demo app will show configuration error without Google Client ID
+- **JWT Parsing**: Demo app manually decodes Google JWT tokens for user information
+- **Freighter Support**: SDK supports connecting existing Stellar wallets
+- **Smart Contracts**: Use Soroban SDK v22.0.0
+- **Local SDK**: Demo app uses file-based dependency (`file:../stellar-social-sdk`)

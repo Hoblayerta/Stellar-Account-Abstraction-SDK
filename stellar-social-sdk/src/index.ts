@@ -10,7 +10,7 @@ export class StellarSocialSDK {
   private server: Horizon.Server;
   private contractId: string;
   private network: string;
-  private googleProvider?: GoogleAuthProvider;
+  public googleProvider?: GoogleAuthProvider;
   private freighterProvider: FreighterProvider;
 
   constructor(config: SocialAuthConfig) {
@@ -24,7 +24,9 @@ export class StellarSocialSDK {
     );
 
     // Initialize providers
-    this.googleProvider = new GoogleAuthProvider(config.googleClientId);
+    if (config.googleClientId) {
+      this.googleProvider = new GoogleAuthProvider(config.googleClientId);
+    }
     this.freighterProvider = new FreighterProvider();
   }
 
@@ -40,20 +42,36 @@ export class StellarSocialSDK {
   }
 
   /**
-   * Authenticate with Google
+   * Authenticate with Google - REAL OAuth
    */
   async authenticateWithGoogle(): Promise<AuthResult> {
     try {
-      console.log('🔐 Starting Google authentication...');
+      console.log('🔐 Starting real Google authentication...');
       
       if (!this.googleProvider) {
-        throw new Error('Google provider not configured');
+        throw new Error('Google provider not configured. Please provide googleClientId in config.');
       }
 
+      // Real Google OAuth flow
       const authMethod = await this.googleProvider.authenticate();
-      const account = await this.getOrCreateAccount(authMethod);
+      
+      // Use Google sub (user ID) for deterministic keypair generation
+      const googleSub = authMethod.metadata?.sub;
+      if (!googleSub) {
+        throw new Error('Google user ID not found');
+      }
 
-      console.log('✅ Google authentication successful');
+      // Create deterministic keypair from Google user ID
+      const keypair = CryptoUtils.generateKeypair('google', googleSub);
+      const publicKey = keypair.publicKey();
+      
+      console.log(`🔑 Generated deterministic address for Google user: ${publicKey}`);
+      console.log(`👤 Google user: ${authMethod.metadata?.name} (${authMethod.metadata?.email})`);
+
+      // Check if account exists or create new one
+      const account = await this.getOrCreateAccountWithKeypair(keypair, authMethod);
+
+      console.log('✅ Real Google authentication successful');
       return {
         success: true,
         account
@@ -176,10 +194,8 @@ export class StellarSocialSDK {
     let keypair: Keypair;
 
     if (authMethod.type === 'freighter') {
-      // For Freighter, use the existing public key
       keypair = Keypair.fromPublicKey(authMethod.identifier);
     } else {
-      // For social auth, generate deterministic keypair
       keypair = CryptoUtils.generateKeypair(authMethod.type, authMethod.identifier);
     }
 
@@ -187,7 +203,6 @@ export class StellarSocialSDK {
     console.log(`🔑 Generated address: ${publicKey}`);
 
     try {
-      // Check if account exists on blockchain
       await this.server.loadAccount(publicKey);
       console.log('📋 Loading existing account:', publicKey);
       
@@ -207,9 +222,42 @@ export class StellarSocialSDK {
       );
 
     } catch (error) {
-      // Account doesn't exist, create it
       console.log('🔨 Creating new account for:', authMethod.type);
       return await this.createNewAccount(keypair, authMethod);
+    }
+  }
+
+  /**
+   * Get or create account with specific keypair
+   */
+  private async getOrCreateAccountWithKeypair(
+    keypair: Keypair, 
+    authMethod: AuthMethod
+  ): Promise<StellarSocialAccount> {
+    const publicKey = keypair.publicKey();
+
+    try {
+      await this.server.loadAccount(publicKey);
+      console.log('📋 Loading existing account:', publicKey);
+      
+      const accountData = {
+        publicKey,
+        authMethods: [authMethod],
+        createdAt: Date.now(),
+        recoveryContacts: []
+      };
+
+      return new StellarSocialAccount(
+        accountData,
+        this.server,
+        this.contractId,
+        this.network,
+        keypair
+      );
+
+    } catch (error) {
+      console.log('🔨 Creating new account for Google user:', authMethod.metadata?.email);
+      return await this.createNewAccountWithKeypair(keypair, authMethod);
     }
   }
 
@@ -244,9 +292,42 @@ export class StellarSocialSDK {
       authMethod.type !== 'freighter' ? keypair : undefined
     );
 
-    // Initialize with contract
     await account.initializeWithContract();
+    return account;
+  }
 
+  /**
+   * Create new account with specific keypair
+   */
+  private async createNewAccountWithKeypair(
+    keypair: Keypair, 
+    authMethod: AuthMethod
+  ): Promise<StellarSocialAccount> {
+    const publicKey = keypair.publicKey();
+
+    if (this.network === 'testnet') {
+      console.log('💰 Funding testnet account...');
+      await this.fundTestnetAccount(publicKey);
+      console.log('⏳ Waiting for account creation...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    const accountData = {
+      publicKey,
+      authMethods: [authMethod],
+      createdAt: Date.now(),
+      recoveryContacts: []
+    };
+
+    const account = new StellarSocialAccount(
+      accountData,
+      this.server,
+      this.contractId,
+      this.network,
+      keypair
+    );
+
+    await account.initializeWithContract();
     return account;
   }
 
