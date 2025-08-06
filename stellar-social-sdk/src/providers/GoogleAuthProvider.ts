@@ -28,31 +28,19 @@ export class GoogleAuthProvider {
   }
 
   /**
-   * Initialize Google Identity Services
+   * Initialize Google Identity Services (only load script, don't initialize)
    */
   async initialize(): Promise<void> {
     if (typeof window === 'undefined') return;
     if (this.initialized) return;
     
-    console.log('🔧 Initializing Google Identity Services...');
+    console.log('🔧 Loading Google Identity Services script...');
     
-    // Load Google Identity Services
+    // Only load the script, let the demo app handle initialization
     await this.loadGoogleIdentityServices();
     
-    // Initialize Google Sign-In
-    if (window.google?.accounts?.id) {
-      window.google.accounts.id.initialize({
-        client_id: this.clientId,
-        callback: this.handleCredentialResponse.bind(this),
-        auto_select: false,
-        cancel_on_tap_outside: true,
-      });
-      
-      this.initialized = true;
-      console.log('✅ Google Identity Services initialized');
-    } else {
-      throw new Error('Failed to load Google Identity Services');
-    }
+    this.initialized = true;
+    console.log('✅ Google Identity Services script loaded');
   }
 
   /**
@@ -87,47 +75,38 @@ export class GoogleAuthProvider {
   }
 
   /**
-   * Authenticate with Google - Real OAuth flow
+   * Create AuthMethod from Google credential response
    */
-  async authenticate(): Promise<AuthMethod> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    return new Promise((resolve, reject) => {
-      // Set up global callback handler
-      window.handleGoogleCredential = async (response: any) => {
-        try {
-          const userInfo = await this.verifyToken(response.credential);
-          
-          const authMethod: AuthMethod = {
-            type: 'google',
-            identifier: userInfo.email,
-            token: response.credential,
-            metadata: {
-              name: userInfo.name,
-              picture: userInfo.picture,
-              sub: userInfo.sub,
-              email: userInfo.email,
-              email_verified: userInfo.email_verified,
-            }
-          };
-
-          console.log('✅ Google authentication successful:', userInfo.email);
-          resolve(authMethod);
-        } catch (error: any) {
-          console.error('❌ Google authentication failed:', error);
-          reject(error);
+  async createAuthMethodFromCredential(credentialResponse: any): Promise<AuthMethod> {
+    try {
+      const userInfo = await this.verifyToken(credentialResponse.credential);
+      
+      const authMethod: AuthMethod = {
+        type: 'google',
+        identifier: userInfo.email,
+        token: credentialResponse.credential,
+        metadata: {
+          name: userInfo.name,
+          picture: userInfo.picture,
+          sub: userInfo.sub,
+          email: userInfo.email,
+          email_verified: userInfo.email_verified,
         }
       };
 
-      // Trigger Google Sign-In
-      if (window.google?.accounts?.id) {
-        window.google.accounts.id.prompt();
-      } else {
-        reject(new Error('Google Identity Services not loaded'));
-      }
-    });
+      console.log('✅ Google authentication successful:', userInfo.email);
+      return authMethod;
+    } catch (error: any) {
+      console.error('❌ Google authentication failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Authenticate with Google - Real OAuth flow (deprecated, use createAuthMethodFromCredential)
+   */
+  async authenticate(): Promise<AuthMethod> {
+    throw new Error('Direct authenticate() is deprecated. Use createAuthMethodFromCredential() instead.');
   }
 
   /**
@@ -152,7 +131,7 @@ export class GoogleAuthProvider {
   }
 
   /**
-   * Verify Google JWT token
+   * Verify Google JWT token with enhanced validation
    */
   async verifyToken(token: string): Promise<any> {
     try {
@@ -161,16 +140,24 @@ export class GoogleAuthProvider {
       const payload = this.decodeJWT(token);
       
       // Basic validation
-      if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
-        throw new Error('Invalid token issuer');
+      if (!payload.iss || (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com')) {
+        throw new Error(`Invalid token issuer: ${payload.iss}`);
       }
       
-      if (payload.aud !== this.clientId) {
-        throw new Error('Invalid token audience');
+      if (!payload.aud || payload.aud !== this.clientId) {
+        throw new Error(`Invalid token audience. Expected: ${this.clientId}, Got: ${payload.aud}`);
       }
       
-      if (payload.exp < Date.now() / 1000) {
+      if (!payload.exp || payload.exp < Date.now() / 1000) {
         throw new Error('Token expired');
+      }
+
+      if (!payload.sub) {
+        throw new Error('Missing user ID in token');
+      }
+
+      if (!payload.email) {
+        throw new Error('Missing email in token');
       }
 
       return payload;

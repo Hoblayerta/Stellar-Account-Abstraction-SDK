@@ -18,7 +18,7 @@ export declare class GoogleAuthProvider {
     private initialized;
     constructor(clientId: string);
     /**
-     * Initialize Google Identity Services
+     * Initialize Google Identity Services (only load script, don't initialize)
      */
     initialize(): Promise<void>;
     /**
@@ -30,7 +30,11 @@ export declare class GoogleAuthProvider {
      */
     private handleCredentialResponse;
     /**
-     * Authenticate with Google - Real OAuth flow
+     * Create AuthMethod from Google credential response
+     */
+    createAuthMethodFromCredential(credentialResponse: any): Promise<AuthMethod>;
+    /**
+     * Authenticate with Google - Real OAuth flow (deprecated, use createAuthMethodFromCredential)
      */
     authenticate(): Promise<AuthMethod>;
     /**
@@ -38,7 +42,7 @@ export declare class GoogleAuthProvider {
      */
     renderButton(element: Element, config?: any): void;
     /**
-     * Verify Google JWT token
+     * Verify Google JWT token with enhanced validation
      */
     verifyToken(token: string): Promise<any>;
     /**

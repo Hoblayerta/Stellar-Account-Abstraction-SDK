@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { StellarSocialSDK } from 'stellar-social-sdk';
 import toast, { Toaster } from 'react-hot-toast';
 import { 
@@ -13,178 +13,150 @@ const CONTRACT_ID = 'CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW';
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 // Declare Google interface
+interface GoogleConfig {
+  client_id: string;
+  callback: (response: CredentialResponse) => void;
+  auto_select?: boolean;
+  cancel_on_tap_outside?: boolean;
+  ux_mode?: string;
+  context?: string;
+  itp_support?: boolean;
+  use_fedcm_for_prompt?: boolean;
+}
+
+interface GoogleButtonConfig {
+  type?: string;
+  shape?: string;
+  theme?: string;
+  text?: string;
+  size?: string;
+  width?: string;
+}
+
+interface GooglePromptNotification {
+  isNotDisplayed: () => boolean;
+  isSkippedMoment: () => boolean;
+  getNotDisplayedReason: () => string;
+}
+
 declare global {
   interface Window {
     google?: {
       accounts: {
         id: {
-          initialize: (config: any) => void;
-          renderButton: (element: Element, config: any) => void;
+          initialize: (config: GoogleConfig) => void;
+          renderButton: (element: Element, config: GoogleButtonConfig) => void;
+          prompt: (callback?: (notification: GooglePromptNotification) => void) => void;
         };
       };
     };
+    handleGoogleCredential?: (response: CredentialResponse) => void;
   }
 }
 
+interface CredentialResponse {
+  credential: string;
+}
+
+interface BalanceInfo {
+  asset: string;
+  balance: string;
+}
+
 export default function Home() {
-  const [sdk, setSdk] = useState<any>(null);
+  const [sdk, setSdk] = useState<StellarSocialSDK | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [account, setAccount] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [balances, setBalances] = useState<any[]>([]);
+  const [balances, setBalances] = useState<BalanceInfo[]>([]);
+  
+  // Use refs to access current state in callbacks
+  const sdkRef = useRef<StellarSocialSDK | null>(null);
+  const setLoadingRef = useRef(setLoading);
+  const setAccountRef = useRef(setAccount);
+  const setBalancesRef = useRef(setBalances);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    sdkRef.current = sdk;
+  }, [sdk]);
+  
+  useEffect(() => {
+    setLoadingRef.current = setLoading;
+    setAccountRef.current = setAccount;
+    setBalancesRef.current = setBalances;
+  }, [setLoading, setAccount, setBalances]);
 
   // Handle completed Google authentication
-  const handleGoogleAuthComplete = useCallback(async (credentialResponse: any) => {
-    console.log('🔐 Processing Google authentication...', credentialResponse);
-    
-    if (!credentialResponse || !credentialResponse.credential) {
-      console.error('❌ No credential received from Google');
-      toast.error('No se recibió credencial de Google');
-      return;
-    }
-    
-    setLoading(true);
-    
+  const handleGoogleAuthComplete = useCallback(async (credentialResponse: CredentialResponse) => {
     try {
+      console.log('🔐 Processing Google authentication...', credentialResponse);
+      
+      if (!credentialResponse) {
+        console.error('❌ No credential response received from Google');
+        toast.error('No credential response received from Google');
+        return;
+      }
+
+      if (!credentialResponse.credential) {
+        console.error('❌ No credential in response from Google');
+        toast.error('No credential in response from Google');
+        return;
+      }
+      
+      setLoadingRef.current(true);
       toast.loading('Creating your Stellar account...', { id: 'auth' });
 
-      // Parse the JWT token to get user info
-      const userInfo = parseJWT(credentialResponse.credential);
-      console.log('👤 User info:', userInfo);
-
-      if (!userInfo.sub) {
-        throw new Error('Invalid Google token');
-      }
-
-      // Create auth method manually
-      const authMethod = {
-        type: 'google' as const,
-        identifier: userInfo.email,
-        token: credentialResponse.credential,
-        metadata: {
-          name: userInfo.name,
-          picture: userInfo.picture,
-          sub: userInfo.sub,
-          email: userInfo.email,
-          email_verified: userInfo.email_verified,
-        }
-      };
-
-      // Generate deterministic keypair
-      const stellarSdk = await import('stellar-social-sdk');
-      const keypair = stellarSdk.CryptoUtils.generateKeypair('google', userInfo.sub);
-      const publicKey = keypair.publicKey();
-      
-      console.log(`🔑 Generated address: ${publicKey}`);
-      console.log(`👤 For user: ${userInfo.name} (${userInfo.email})`);
-
-      // Use the SDK's server
-      if (!sdk) {
+      // Get current SDK instance from ref
+      const currentSdk = sdkRef.current;
+      if (!currentSdk) {
         throw new Error('SDK not initialized');
       }
-      const server = sdk.server;
 
-      // Check if account exists
-      let accountExists = false;
-      try {
-        await server.loadAccount(publicKey);
-        accountExists = true;
-        console.log('📋 Account already exists');
-      } catch (error) {
-        console.log('🔨 Creating new account');
-        // Fund account
-        const fundResponse = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`);
-        if (!fundResponse.ok) {
-          throw new Error('Failed to fund account');
-        }
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('🔑 Processing credential with SDK...');
+      
+      // Use the new SDK method to handle the credential
+      const result = await currentSdk.authenticateWithGoogleCredential(credentialResponse);
+      
+      if (result.success && result.account) {
+        setAccountRef.current(result.account);
+        
+        // Get user info from the account
+        const authMethod = result.account.data.authMethods[0];
+        const userName = authMethod.metadata?.name || 'User';
+        
+        console.log('✅ Authentication successful for:', userName);
+        toast.success(`✅ Welcome ${userName}!`, { id: 'auth' });
+        
+        // Load balances
+        const bal = await result.account.getBalance();
+        setBalancesRef.current(bal);
+      } else {
+        throw new Error(result.error || 'Authentication failed');
       }
 
-      // Create account object
-      const accountData = {
-        publicKey,
-        authMethods: [authMethod],
-        createdAt: Date.now(),
-        recoveryContacts: []
-      };
-
-      const { StellarSocialAccount } = await import('stellar-social-sdk');
-      const stellarAccount = new StellarSocialAccount(
-        accountData,
-        server,
-        CONTRACT_ID,
-        'testnet',
-        keypair
-      );
-
-      setAccount(stellarAccount);
-      toast.success(`✅ Welcome ${userInfo.name}!`, { id: 'auth' });
-      
-      // Load balances
-      const bal = await stellarAccount.getBalance();
-      setBalances(bal);
-
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       console.error('❌ Authentication failed:', error);
-      toast.error(error.message || 'Authentication failed', { id: 'auth' });
+      toast.error(errorMessage, { id: 'auth' });
     } finally {
-      setLoading(false);
+      setLoadingRef.current(false);
     }
-  }, [sdk]);
+  }, []); // No dependencies - stable callback
 
-  // Manejar código de autorización de Google
+  // Clean up URL parameters on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
+    const errorParam = urlParams.get('error');
 
-    if (error) {
-      toast.error('Error de autenticación: ' + error);
-      // Limpiar URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (code) {
-      console.log('🔐 Procesando código de autorización...');
-      handleAuthCode(code);
-      // Limpiar URL
+    if (errorParam) {
+      toast.error('Authentication error: ' + errorParam);
+      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
-  // Manejar código de autorización - versión simplificada
-  const handleAuthCode = async (code: string) => {
-    console.log('🔐 Código recibido:', code);
-    toast.success('OAuth exitoso! Configurando cuenta...');
-    
-    // Para demo, simularemos usuario con el código
-    const mockUserInfo = {
-      sub: `google_${code.substring(0, 8)}`,
-      email: 'demo@stellar-social.com',
-      name: 'Demo User',
-      picture: 'https://via.placeholder.com/150',
-      email_verified: true,
-    };
-
-    // Crear JWT simulado
-    const mockJWT = {
-      sub: mockUserInfo.sub,
-      email: mockUserInfo.email,
-      name: mockUserInfo.name,
-      picture: mockUserInfo.picture,
-      email_verified: mockUserInfo.email_verified,
-    };
-
-    const mockCredential = {
-      credential: btoa(JSON.stringify({})) + '.' + 
-                 btoa(JSON.stringify(mockJWT)) + '.' + 
-                 btoa('mock_signature')
-    };
-
-    await handleGoogleAuthComplete(mockCredential);
-  };
-
-  // Initialize SDK
+  // Initialize SDK (only once)
   useEffect(() => {
     const initSDK = async () => {
       if (!GOOGLE_CLIENT_ID) {
@@ -200,78 +172,63 @@ export default function Home() {
         googleClientId: GOOGLE_CLIENT_ID
       });
 
-      await stellarSDK.initialize();
       setSdk(stellarSDK);
-      
-      // Set up Google OAuth callback after ensuring script is loaded
-      const setupGoogleOAuth = () => {
-        if (typeof window !== 'undefined' && window.google?.accounts?.id) {
+      console.log('✅ SDK initialized');
+    };
+
+    initSDK();
+  }, []); // No dependencies - only run once
+
+  // Set up Google OAuth (when SDK is available)
+  useEffect(() => {
+    if (!sdk) return;
+    
+    const setupGoogleOAuth = () => {
+      if (typeof window !== 'undefined' && window.google?.accounts?.id) {
+        try {
+          // Set global callback before initializing
+          window.handleGoogleCredential = handleGoogleAuthComplete;
+          
           window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
+            client_id: GOOGLE_CLIENT_ID!,
             callback: handleGoogleAuthComplete,
             auto_select: false,
             cancel_on_tap_outside: false,
             ux_mode: 'popup',
             context: 'signin',
             itp_support: true,
+            use_fedcm_for_prompt: true
           });
           console.log('✅ Google OAuth initialized with Client ID:', GOOGLE_CLIENT_ID?.substring(0, 20) + '...');
-          
-          // Add error handling for popup blocked
-          window.addEventListener('message', (event) => {
-            if (event.origin === 'https://accounts.google.com') {
-              console.log('📨 Google OAuth message:', event.data);
-              if (event.data?.type === 'error') {
-                toast.error('Error en Google OAuth: ' + event.data.message);
-              }
-            }
-          });
-          
-          // Listen for popup blocked
-          window.addEventListener('error', (event) => {
-            if (event.message?.includes('popup')) {
-              toast.error('Popup bloqueado. Permite popups para este sitio.');
-            }
-          });
-        } else {
-          console.error('❌ Google Identity Services not loaded');
-          setTimeout(setupGoogleOAuth, 500);
+        } catch (error) {
+          console.error('❌ Error initializing Google OAuth:', error);
+          toast.error('Failed to initialize Google authentication');
         }
-      };
-      
-      setTimeout(setupGoogleOAuth, 1000);
-
-      console.log('✅ SDK initialized');
+        
+      } else {
+        console.error('❌ Google Identity Services not loaded, retrying...');
+        setTimeout(setupGoogleOAuth, 500);
+      }
     };
-
-    initSDK();
-  }, [handleGoogleAuthComplete]);
-
-  // Parse JWT token (simple decode)
-  const parseJWT = (token: string) => {
-    try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
-      return JSON.parse(jsonPayload);
-    } catch (error) {
-      throw new Error('Invalid JWT token');
-    }
-  };
-
-  // Alternative Google login trigger - usando redirect en lugar de popup
-  const triggerGoogleLogin = () => {
-    const googleAuthUrl = `https://accounts.google.com/oauth/authorize?` +
-      `client_id=${GOOGLE_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(window.location.origin + '/auth/callback')}&` +
-      `response_type=code&` +
-      `scope=openid email profile&` +
-      `access_type=offline`;
     
-    console.log('🔄 Redirecting to Google OAuth...');
-    window.location.href = googleAuthUrl;
+    // Wait for Google script to load
+    setTimeout(setupGoogleOAuth, 1000);
+  }, [sdk]); // Only depend on sdk
+
+
+  // Alternative Google login trigger - using One Tap
+  const triggerGoogleLogin = () => {
+    if (window.google?.accounts?.id) {
+      console.log('🔄 Triggering Google One Tap...');
+      window.google.accounts.id.prompt((notification: GooglePromptNotification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          console.log('Google One Tap not displayed:', notification.getNotDisplayedReason());
+          toast.error('Please click the Google button above to sign in');
+        }
+      });
+    } else {
+      toast.error('Google Identity Services not loaded');
+    }
   };
 
   // Render Google button
@@ -279,7 +236,7 @@ export default function Home() {
     if (!account && !loading && typeof window !== 'undefined' && window.google?.accounts?.id) {
       const renderGoogleButton = () => {
         const buttonContainer = document.getElementById('google-signin-button');
-        if (buttonContainer) {
+        if (buttonContainer && window.google?.accounts?.id) {
           buttonContainer.innerHTML = '';
           window.google.accounts.id.renderButton(buttonContainer, {
             type: 'standard',
@@ -314,8 +271,9 @@ export default function Home() {
       } else {
         toast.error(result.error || 'Authentication failed', { id: 'auth' });
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Authentication failed', { id: 'auth' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+      toast.error(errorMessage, { id: 'auth' });
     } finally {
       setLoading(false);
     }
@@ -334,8 +292,9 @@ export default function Home() {
       
       const bal = await account.getBalance();
       setBalances(bal);
-    } catch (error: any) {
-      toast.error(error.message || 'Payment failed', { id: 'payment' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Payment failed';
+      toast.error(errorMessage, { id: 'payment' });
     }
   };
 
@@ -415,10 +374,10 @@ export default function Home() {
                     <button
                       onClick={triggerGoogleLogin}
                       disabled={loading}
-                      className="w-full bg-white hover:bg-gray-100 disabled:opacity-50 text-gray-800 font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm border border-gray-300"
+                      className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm"
                     >
                       <span className="text-lg">🔄</span>
-                      Try Google Login Again
+                      Trigger Google One Tap
                     </button>
                   </div>
 
@@ -495,7 +454,7 @@ export default function Home() {
                 <div>
                   <label className="block text-purple-200 text-sm mb-2">👤 Account Info</label>
                   <div className="bg-black/30 rounded-xl p-3 text-white text-sm">
-                    {account.data.authMethods.map((method: any, index: number) => (
+                    {account.data.authMethods.map((method: { type: string; metadata?: { name?: string; email?: string } }, index: number) => (
                       <div key={index} className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-green-400">✓</span>

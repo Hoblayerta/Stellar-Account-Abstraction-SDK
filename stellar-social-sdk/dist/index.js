@@ -7621,30 +7621,18 @@ class GoogleAuthProvider {
         this.clientId = clientId;
     }
     /**
-     * Initialize Google Identity Services
+     * Initialize Google Identity Services (only load script, don't initialize)
      */
     async initialize() {
         if (typeof window === 'undefined')
             return;
         if (this.initialized)
             return;
-        console.log('🔧 Initializing Google Identity Services...');
-        // Load Google Identity Services
+        console.log('🔧 Loading Google Identity Services script...');
+        // Only load the script, let the demo app handle initialization
         await this.loadGoogleIdentityServices();
-        // Initialize Google Sign-In
-        if (window.google?.accounts?.id) {
-            window.google.accounts.id.initialize({
-                client_id: this.clientId,
-                callback: this.handleCredentialResponse.bind(this),
-                auto_select: false,
-                cancel_on_tap_outside: true,
-            });
-            this.initialized = true;
-            console.log('✅ Google Identity Services initialized');
-        }
-        else {
-            throw new Error('Failed to load Google Identity Services');
-        }
+        this.initialized = true;
+        console.log('✅ Google Identity Services script loaded');
     }
     /**
      * Load Google Identity Services script
@@ -7673,45 +7661,36 @@ class GoogleAuthProvider {
         }
     }
     /**
-     * Authenticate with Google - Real OAuth flow
+     * Create AuthMethod from Google credential response
      */
-    async authenticate() {
-        if (!this.initialized) {
-            await this.initialize();
-        }
-        return new Promise((resolve, reject) => {
-            // Set up global callback handler
-            window.handleGoogleCredential = async (response) => {
-                try {
-                    const userInfo = await this.verifyToken(response.credential);
-                    const authMethod = {
-                        type: 'google',
-                        identifier: userInfo.email,
-                        token: response.credential,
-                        metadata: {
-                            name: userInfo.name,
-                            picture: userInfo.picture,
-                            sub: userInfo.sub,
-                            email: userInfo.email,
-                            email_verified: userInfo.email_verified,
-                        }
-                    };
-                    console.log('✅ Google authentication successful:', userInfo.email);
-                    resolve(authMethod);
-                }
-                catch (error) {
-                    console.error('❌ Google authentication failed:', error);
-                    reject(error);
+    async createAuthMethodFromCredential(credentialResponse) {
+        try {
+            const userInfo = await this.verifyToken(credentialResponse.credential);
+            const authMethod = {
+                type: 'google',
+                identifier: userInfo.email,
+                token: credentialResponse.credential,
+                metadata: {
+                    name: userInfo.name,
+                    picture: userInfo.picture,
+                    sub: userInfo.sub,
+                    email: userInfo.email,
+                    email_verified: userInfo.email_verified,
                 }
             };
-            // Trigger Google Sign-In
-            if (window.google?.accounts?.id) {
-                window.google.accounts.id.prompt();
-            }
-            else {
-                reject(new Error('Google Identity Services not loaded'));
-            }
-        });
+            console.log('✅ Google authentication successful:', userInfo.email);
+            return authMethod;
+        }
+        catch (error) {
+            console.error('❌ Google authentication failed:', error);
+            throw error;
+        }
+    }
+    /**
+     * Authenticate with Google - Real OAuth flow (deprecated, use createAuthMethodFromCredential)
+     */
+    async authenticate() {
+        throw new Error('Direct authenticate() is deprecated. Use createAuthMethodFromCredential() instead.');
     }
     /**
      * Render Google Sign-In button
@@ -7732,7 +7711,7 @@ class GoogleAuthProvider {
         window.google.accounts.id.renderButton(element, { ...defaultConfig, ...config });
     }
     /**
-     * Verify Google JWT token
+     * Verify Google JWT token with enhanced validation
      */
     async verifyToken(token) {
         try {
@@ -7740,14 +7719,20 @@ class GoogleAuthProvider {
             // In production, verify signature with Google's public keys
             const payload = this.decodeJWT(token);
             // Basic validation
-            if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
-                throw new Error('Invalid token issuer');
+            if (!payload.iss || (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com')) {
+                throw new Error(`Invalid token issuer: ${payload.iss}`);
             }
-            if (payload.aud !== this.clientId) {
-                throw new Error('Invalid token audience');
+            if (!payload.aud || payload.aud !== this.clientId) {
+                throw new Error(`Invalid token audience. Expected: ${this.clientId}, Got: ${payload.aud}`);
             }
-            if (payload.exp < Date.now() / 1000) {
+            if (!payload.exp || payload.exp < Date.now() / 1000) {
                 throw new Error('Token expired');
+            }
+            if (!payload.sub) {
+                throw new Error('Missing user ID in token');
+            }
+            if (!payload.email) {
+                throw new Error('Missing email in token');
             }
             return payload;
         }
@@ -7868,16 +7853,16 @@ class StellarSocialSDK {
         console.log('✅ SDK initialized');
     }
     /**
-     * Authenticate with Google - REAL OAuth
+     * Authenticate with Google using credential response - REAL OAuth
      */
-    async authenticateWithGoogle() {
+    async authenticateWithGoogleCredential(credentialResponse) {
         try {
-            console.log('🔐 Starting real Google authentication...');
+            console.log('🔐 Processing Google credential response...');
             if (!this.googleProvider) {
                 throw new Error('Google provider not configured. Please provide googleClientId in config.');
             }
-            // Real Google OAuth flow
-            const authMethod = await this.googleProvider.authenticate();
+            // Process credential response through provider
+            const authMethod = await this.googleProvider.createAuthMethodFromCredential(credentialResponse);
             // Use Google sub (user ID) for deterministic keypair generation
             const googleSub = authMethod.metadata?.sub;
             if (!googleSub) {
@@ -7903,6 +7888,15 @@ class StellarSocialSDK {
                 error: error.message || 'Google authentication failed'
             };
         }
+    }
+    /**
+     * Authenticate with Google - DEPRECATED, use authenticateWithGoogleCredential
+     */
+    async authenticateWithGoogle() {
+        return {
+            success: false,
+            error: 'Direct Google authentication is deprecated. Use authenticateWithGoogleCredential() instead.'
+        };
     }
     /**
      * Authenticate with Facebook (mock for MVP)

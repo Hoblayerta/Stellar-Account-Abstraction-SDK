@@ -42,18 +42,18 @@ export class StellarSocialSDK {
   }
 
   /**
-   * Authenticate with Google - REAL OAuth
+   * Authenticate with Google using credential response - REAL OAuth
    */
-  async authenticateWithGoogle(): Promise<AuthResult> {
+  async authenticateWithGoogleCredential(credentialResponse: any): Promise<AuthResult> {
     try {
-      console.log('🔐 Starting real Google authentication...');
+      console.log('🔐 Processing Google credential response...');
       
       if (!this.googleProvider) {
         throw new Error('Google provider not configured. Please provide googleClientId in config.');
       }
 
-      // Real Google OAuth flow
-      const authMethod = await this.googleProvider.authenticate();
+      // Process credential response through provider
+      const authMethod = await this.googleProvider.createAuthMethodFromCredential(credentialResponse);
       
       // Use Google sub (user ID) for deterministic keypair generation
       const googleSub = authMethod.metadata?.sub;
@@ -83,6 +83,16 @@ export class StellarSocialSDK {
         error: error.message || 'Google authentication failed'
       };
     }
+  }
+
+  /**
+   * Authenticate with Google - DEPRECATED, use authenticateWithGoogleCredential
+   */
+  async authenticateWithGoogle(): Promise<AuthResult> {
+    return {
+      success: false,
+      error: 'Direct Google authentication is deprecated. Use authenticateWithGoogleCredential() instead.'
+    };
   }
 
   /**

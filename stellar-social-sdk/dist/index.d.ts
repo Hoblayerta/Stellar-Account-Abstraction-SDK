@@ -64,7 +64,7 @@ declare class GoogleAuthProvider {
     private initialized;
     constructor(clientId: string);
     /**
-     * Initialize Google Identity Services
+     * Initialize Google Identity Services (only load script, don't initialize)
      */
     initialize(): Promise<void>;
     /**
@@ -76,7 +76,11 @@ declare class GoogleAuthProvider {
      */
     private handleCredentialResponse;
     /**
-     * Authenticate with Google - Real OAuth flow
+     * Create AuthMethod from Google credential response
+     */
+    createAuthMethodFromCredential(credentialResponse: any): Promise<AuthMethod>;
+    /**
+     * Authenticate with Google - Real OAuth flow (deprecated, use createAuthMethodFromCredential)
      */
     authenticate(): Promise<AuthMethod>;
     /**
@@ -84,7 +88,7 @@ declare class GoogleAuthProvider {
      */
     renderButton(element: Element, config?: any): void;
     /**
-     * Verify Google JWT token
+     * Verify Google JWT token with enhanced validation
      */
     verifyToken(token: string): Promise<any>;
     /**
@@ -145,7 +149,11 @@ declare class StellarSocialSDK {
      */
     initialize(): Promise<void>;
     /**
-     * Authenticate with Google - REAL OAuth
+     * Authenticate with Google using credential response - REAL OAuth
+     */
+    authenticateWithGoogleCredential(credentialResponse: any): Promise<AuthResult>;
+    /**
+     * Authenticate with Google - DEPRECATED, use authenticateWithGoogleCredential
      */
     authenticateWithGoogle(): Promise<AuthResult>;
     /**
