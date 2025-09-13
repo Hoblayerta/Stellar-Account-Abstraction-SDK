@@ -12,51 +12,12 @@ import {
 const CONTRACT_ID = 'CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW';
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
-// Declare Google interface
-interface GoogleConfig {
-  client_id: string;
-  callback: (response: CredentialResponse) => void;
-  auto_select?: boolean;
-  cancel_on_tap_outside?: boolean;
-  ux_mode?: string;
-  context?: string;
-  itp_support?: boolean;
-  use_fedcm_for_prompt?: boolean;
-}
 
-interface GoogleButtonConfig {
-  type?: string;
-  shape?: string;
-  theme?: string;
-  text?: string;
-  size?: string;
-  width?: string;
-}
-
-interface GooglePromptNotification {
-  isNotDisplayed: () => boolean;
-  isSkippedMoment: () => boolean;
-  getNotDisplayedReason: () => string;
-}
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: GoogleConfig) => void;
-          renderButton: (element: Element, config: GoogleButtonConfig) => void;
-          prompt: (callback?: (notification: GooglePromptNotification) => void) => void;
-        };
-      };
-    };
-    handleGoogleCredential?: (response: CredentialResponse) => void;
-  }
-}
 
 interface CredentialResponse {
   credential: string;
 }
+
 
 interface BalanceInfo {
   asset: string;
@@ -69,6 +30,9 @@ export default function Home() {
   const [account, setAccount] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [balances, setBalances] = useState<BalanceInfo[]>([]);
+  const [recipientAddress, setRecipientAddress] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('1');
+  const [sendingPayment, setSendingPayment] = useState(false);
   
   // Use refs to access current state in callbacks
   const sdkRef = useRef<StellarSocialSDK | null>(null);
@@ -220,12 +184,7 @@ export default function Home() {
   const triggerGoogleLogin = () => {
     if (window.google?.accounts?.id) {
       console.log('🔄 Triggering Google One Tap...');
-      window.google.accounts.id.prompt((notification: GooglePromptNotification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          console.log('Google One Tap not displayed:', notification.getNotDisplayedReason());
-          toast.error('Please click the Google button above to sign in');
-        }
-      });
+      window.google.accounts.id.prompt();
     } else {
       toast.error('Google Identity Services not loaded');
     }
@@ -279,22 +238,58 @@ export default function Home() {
     }
   };
 
+  // Validate Stellar address
+  const isValidStellarAddress = (address: string): boolean => {
+    if (!address) return false;
+    // Stellar addresses are 56 characters long and start with G
+    return /^G[A-Z2-7]{55}$/.test(address);
+  };
+
   const handleSendPayment = async () => {
     if (!account) return;
 
+    // Validate inputs
+    if (!recipientAddress.trim()) {
+      toast.error('Please enter a recipient address');
+      return;
+    }
+
+    if (!isValidStellarAddress(recipientAddress.trim())) {
+      toast.error('Invalid Stellar address. Must be 56 characters starting with G');
+      return;
+    }
+
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount greater than 0');
+      return;
+    }
+
     try {
-      toast.loading('Sending test payment...', { id: 'payment' });
+      setSendingPayment(true);
+      toast.loading(`Sending ${paymentAmount} XLM...`, { id: 'payment' });
       
-      const testAddress = 'GBZXN7PIRZGNMHGA7MUUUF4GWJQ5ULA6TFIAJ5CPYPJ4TJWCXQ5PXNRP';
-      const hash = await account.sendPayment(testAddress, '1', undefined, 'Test payment from Stellar Social');
+      const hash = await account.sendPayment(
+        recipientAddress.trim(), 
+        paymentAmount, 
+        undefined, 
+        `SS: ${paymentAmount} XLM`
+      );
       
       toast.success(`✅ Payment sent! Hash: ${hash.substring(0, 8)}...`, { id: 'payment' });
       
+      // Clear form
+      setRecipientAddress('');
+      setPaymentAmount('1');
+      
+      // Refresh balances
       const bal = await account.getBalance();
       setBalances(bal);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Payment failed';
       toast.error(errorMessage, { id: 'payment' });
+    } finally {
+      setSendingPayment(false);
     }
   };
 
@@ -489,16 +484,74 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Send Payment */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-semibold text-white mb-4">🚀 Ready for Transactions</h3>
-              <div className="grid md:grid-cols-2 gap-4">
+              <h3 className="text-xl font-semibold text-white mb-4">💸 Send XLM Payment</h3>
+              
+              <div className="space-y-4">
+                {/* Recipient Address */}
+                <div>
+                  <label className="block text-purple-200 text-sm mb-2">Recipient Stellar Address</label>
+                  <input
+                    type="text"
+                    value={recipientAddress}
+                    onChange={(e) => setRecipientAddress(e.target.value)}
+                    placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                    className="w-full bg-black/30 border border-white/20 rounded-xl p-3 text-white font-mono text-sm placeholder-white/40 focus:border-purple-400 focus:outline-none"
+                    maxLength={56}
+                  />
+                  {recipientAddress && !isValidStellarAddress(recipientAddress) && (
+                    <p className="text-red-300 text-xs mt-1">Invalid Stellar address format</p>
+                  )}
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-purple-200 text-sm mb-2">Amount (XLM)</label>
+                  <input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="1.0"
+                    min="0.000001"
+                    step="0.1"
+                    className="w-full bg-black/30 border border-white/20 rounded-xl p-3 text-white text-sm placeholder-white/40 focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Send Button */}
                 <button
                   onClick={handleSendPayment}
-                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
+                  disabled={sendingPayment || !recipientAddress.trim() || !isValidStellarAddress(recipientAddress) || parseFloat(paymentAmount) <= 0}
+                  className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
                 >
-                  <CurrencyDollarIcon className="w-5 h-5" />
-                  Send Test Payment (1 XLM)
+                  {sendingPayment ? (
+                    <>
+                      <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full"></div>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <CurrencyDollarIcon className="w-5 h-5" />
+                      Send {paymentAmount} XLM
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <h3 className="text-xl font-semibold text-white mb-4">🚀 Account Actions</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setRecipientAddress(account.publicKey);
+                    setPaymentAmount('0.1');
+                  }}
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
+                >
+                  📝 Self Payment Test
                 </button>
                 
                 <button

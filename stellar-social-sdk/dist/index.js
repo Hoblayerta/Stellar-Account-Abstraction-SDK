@@ -35,7 +35,9 @@ class StellarSocialAccount {
                 amount,
             }));
             if (memo) {
-                txBuilder.addMemo(stellarSdk.Memo.text(memo));
+                // Stellar text memos have a 28-byte limit
+                const truncatedMemo = memo.length > 28 ? memo.substring(0, 28) : memo;
+                txBuilder.addMemo(stellarSdk.Memo.text(truncatedMemo));
             }
             const transaction = txBuilder.setTimeout(300).build();
             transaction.sign(this.keypair);
