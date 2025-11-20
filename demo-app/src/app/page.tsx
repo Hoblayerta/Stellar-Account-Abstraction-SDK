@@ -33,6 +33,7 @@ export default function Home() {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('1');
   const [sendingPayment, setSendingPayment] = useState(false);
+  const [useGasless, setUseGasless] = useState(false);
   
   // Use refs to access current state in callbacks
   const sdkRef = useRef<StellarSocialSDK | null>(null);
@@ -267,21 +268,41 @@ export default function Home() {
 
     try {
       setSendingPayment(true);
-      toast.loading(`Sending ${paymentAmount} XLM...`, { id: 'payment' });
-      
-      const hash = await account.sendPayment(
-        recipientAddress.trim(), 
-        paymentAmount, 
-        undefined, 
-        `SS: ${paymentAmount} XLM`
-      );
-      
-      toast.success(`✅ Payment sent! Hash: ${hash.substring(0, 8)}...`, { id: 'payment' });
-      
+
+      if (useGasless) {
+        // Transacción Gasless - El sponsor paga
+        toast.loading(`Sending ${paymentAmount} XLM (gasless)...`, { id: 'payment' });
+
+        const result = await account.sendGaslessPayment(
+          recipientAddress.trim(),
+          paymentAmount,
+          '/api/sponsor-transaction',
+          undefined,
+          `Gasless: ${paymentAmount} XLM`
+        );
+
+        toast.success(
+          `✅ Gasless payment sent! Sponsor: ${result.sponsorPublicKey.substring(0, 8)}... Hash: ${result.hash.substring(0, 8)}...`,
+          { id: 'payment', duration: 5000 }
+        );
+      } else {
+        // Transacción Normal - Usuario paga
+        toast.loading(`Sending ${paymentAmount} XLM...`, { id: 'payment' });
+
+        const hash = await account.sendPayment(
+          recipientAddress.trim(),
+          paymentAmount,
+          undefined,
+          `SS: ${paymentAmount} XLM`
+        );
+
+        toast.success(`✅ Payment sent! Hash: ${hash.substring(0, 8)}...`, { id: 'payment' });
+      }
+
       // Clear form
       setRecipientAddress('');
       setPaymentAmount('1');
-      
+
       // Refresh balances
       const bal = await account.getBalance();
       setBalances(bal);
@@ -487,8 +508,44 @@ export default function Home() {
             {/* Send Payment */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
               <h3 className="text-xl font-semibold text-white mb-4">💸 Send XLM Payment</h3>
-              
+
               <div className="space-y-4">
+                {/* Gasless Toggle */}
+                <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-white font-medium">
+                          {useGasless ? '⚡ Gasless Mode' : '💳 Normal Mode'}
+                        </span>
+                      </div>
+                      <p className="text-purple-200 text-xs">
+                        {useGasless
+                          ? 'El sponsor pagará las fees de esta transacción'
+                          : 'Tú pagarás las fees (~0.00001 XLM)'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setUseGasless(!useGasless)}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                        useGasless ? 'bg-green-500' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                          useGasless ? 'translate-x-7' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {useGasless && (
+                    <div className="mt-2 text-green-300 text-xs flex items-center gap-1">
+                      <span>✓</span>
+                      <span>Esta transacción será patrocinada por el desarrollador</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Recipient Address */}
                 <div>
                   <label className="block text-purple-200 text-sm mb-2">Recipient Stellar Address</label>
@@ -523,7 +580,11 @@ export default function Home() {
                 <button
                   onClick={handleSendPayment}
                   disabled={sendingPayment || !recipientAddress.trim() || !isValidStellarAddress(recipientAddress) || parseFloat(paymentAmount) <= 0}
-                  className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
+                  className={`w-full ${
+                    useGasless
+                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600'
+                      : 'bg-green-500 hover:bg-green-600'
+                  } disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3`}
                 >
                   {sendingPayment ? (
                     <>
@@ -532,8 +593,8 @@ export default function Home() {
                     </>
                   ) : (
                     <>
-                      <CurrencyDollarIcon className="w-5 h-5" />
-                      Send {paymentAmount} XLM
+                      {useGasless ? '⚡' : <CurrencyDollarIcon className="w-5 h-5" />}
+                      {useGasless ? `Send ${paymentAmount} XLM (Gasless)` : `Send ${paymentAmount} XLM`}
                     </>
                   )}
                 </button>
