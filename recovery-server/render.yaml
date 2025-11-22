@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: stellar-recovery-server
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: STELLAR_NETWORK
+        value: testnet
+      - key: ENCRYPTION_KEY
+        generateValue: true
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://your-demo-app.vercel.app,http://localhost:3000
+      - key: DATABASE_PATH
+        value: /opt/render/project/src/data/recovery.db
+    healthCheckPath: /health
+    disk:
+      name: recovery-db
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

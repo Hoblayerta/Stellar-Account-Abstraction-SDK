@@ -4,7 +4,6 @@ import {
   TransactionBuilder,
   Networks,
   Transaction,
-  FeeBumpTransaction,
   Horizon,
 } from '@stellar/stellar-sdk';
 
@@ -39,15 +38,8 @@ export async function POST(request: NextRequest) {
     // Crear keypair del sponsor
     const sponsorKeypair = Keypair.fromSecret(SPONSOR_SECRET_KEY);
 
-    // Conectar a Horizon para obtener info del sponsor
-    const server = new Horizon.Server(
-      NETWORK === 'testnet'
-        ? 'https://horizon-testnet.stellar.org'
-        : 'https://horizon.stellar.org'
-    );
-
-    // Cargar cuenta del sponsor
-    const sponsorAccount = await server.loadAccount(sponsorKeypair.publicKey());
+    // No necesitamos cargar la cuenta del sponsor para fee-bump transactions
+    // El sponsor solo firma la fee-bump, no necesita su account info
 
     // Crear Fee-Bump Transaction
     // El sponsor paga las fees por la transacción del usuario
@@ -70,12 +62,13 @@ export async function POST(request: NextRequest) {
       message: 'Transacción patrocinada exitosamente. El sponsor pagará las fees.'
     });
 
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error al patrocinar transacción:', error);
     return NextResponse.json(
       {
         error: 'Error al patrocinar la transacción',
-        details: error.message
+        details: message
       },
       { status: 500 }
     );

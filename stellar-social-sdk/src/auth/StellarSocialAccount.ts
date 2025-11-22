@@ -1,13 +1,19 @@
-import { 
-  Keypair, 
-  Horizon, 
-  TransactionBuilder, 
-  Networks, 
-  Operation, 
+import {
+  Keypair,
+  Horizon,
+  TransactionBuilder,
+  Networks,
+  Operation,
   Asset,
   Memo
 } from '@stellar/stellar-sdk';
 import { AuthMethod, SocialAccountData } from '../types/index.js';
+import {
+  RecoveryConfig,
+  RecoveryIdentity,
+  RecoverySigner,
+  RecoveryAuthMethod
+} from '../types/recovery.js';
 
 export class StellarSocialAccount {
   private keypair?: Keypair;
@@ -15,6 +21,8 @@ export class StellarSocialAccount {
   private contractId: string;
   private network: string;
   public data: SocialAccountData;
+  private recoverySigners: RecoverySigner[] = [];
+  private recoveryIdentities: RecoveryIdentity[] = [];
 
   constructor(
     data: SocialAccountData,
@@ -210,15 +218,225 @@ export class StellarSocialAccount {
 
     try {
       console.log('🔧 Initializing account with social contract...');
-      
+
       // For MVP, we'll skip the actual contract call
       // In production, this would call the contract's initialize function
       console.log(`✅ Account initialized: ${this.publicKey}`);
       return true;
-      
+
     } catch (error: any) {
       console.error('Contract initialization failed:', error.message);
       return false;
     }
+  }
+
+  /**
+   * SEP-30: Register recovery identities
+   */
+  async registerRecoveryIdentity(identity: RecoveryIdentity): Promise<boolean> {
+    try {
+      console.log('🔐 Registering recovery identity...');
+
+      // Validate auth methods
+      for (const method of identity.authMethods) {
+        if (!this.isValidAuthMethod(method)) {
+          throw new Error(`Invalid auth method: ${method.type}`);
+        }
+      }
+
+      this.recoveryIdentities.push(identity);
+      console.log(`✅ Recovery identity registered with ${identity.authMethods.length} auth method(s)`);
+
+      // In production, this would call SEP-30 recovery server API:
+      // POST /accounts/{address} with identity data
+
+      return true;
+    } catch (error: any) {
+      console.error('❌ Failed to register recovery identity:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * SEP-30: Add recovery signer
+   */
+  async addRecoverySigner(config: RecoveryConfig): Promise<boolean> {
+    if (!this.keypair) {
+      throw new Error('No keypair available for signing transaction');
+    }
+
+    try {
+      console.log('🔑 Adding recovery signers...');
+
+      // Generate recovery server signers
+      const signers: RecoverySigner[] = [];
+      for (const serverConfig of config.servers) {
+        // In production, recovery server would generate this
+        const recoveryKeypair = Keypair.random();
+        signers.push({
+          key: recoveryKeypair.publicKey(),
+          added: new Date().toISOString()
+        });
+      }
+
+      // Build transaction to add signers
+      const account = await this.server.loadAccount(this.publicKey);
+      const txBuilder = new TransactionBuilder(account, {
+        fee: '100000',
+        networkPassphrase: this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC,
+      });
+
+      // Set account thresholds
+      txBuilder.addOperation(
+        Operation.setOptions({
+          lowThreshold: config.accountThreshold.low,
+          medThreshold: config.accountThreshold.medium,
+          highThreshold: config.accountThreshold.high,
+        })
+      );
+
+      // Add each recovery signer with appropriate weight
+      for (const signer of signers) {
+        txBuilder.addOperation(
+          Operation.setOptions({
+            signer: {
+              ed25519PublicKey: signer.key,
+              weight: config.signerWeight.recoveryServer
+            }
+          })
+        );
+      }
+
+      // Update device key weight
+      txBuilder.addOperation(
+        Operation.setOptions({
+          signer: {
+            ed25519PublicKey: this.publicKey,
+            weight: config.signerWeight.device
+          }
+        })
+      );
+
+      const transaction = txBuilder.setTimeout(300).build();
+      transaction.sign(this.keypair);
+
+      await this.server.submitTransaction(transaction);
+
+      this.recoverySigners = signers;
+      console.log(`✅ Added ${signers.length} recovery signer(s)`);
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ Failed to add recovery signers:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * SEP-30: Initiate account recovery
+   */
+  async initiateRecovery(
+    newDeviceKeypair: Keypair,
+    recoveryAuthMethods: RecoveryAuthMethod[]
+  ): Promise<boolean> {
+    try {
+      console.log('🔄 Initiating account recovery...');
+
+      // Verify recovery auth methods
+      for (const method of recoveryAuthMethods) {
+        const identity = this.recoveryIdentities.find(id =>
+          id.authMethods.some(am => am.type === method.type && am.value === method.value)
+        );
+
+        if (!identity) {
+          throw new Error(`No registered recovery identity for ${method.type}: ${method.value}`);
+        }
+      }
+
+      // In production, this would:
+      // 1. Authenticate with recovery servers using auth methods
+      // 2. Request transaction signatures from recovery servers
+      // 3. Build transaction to replace device key
+      // 4. Submit multi-signed transaction
+
+      console.log('📝 Recovery transaction would replace device key:');
+      console.log(`   Old: ${this.publicKey}`);
+      console.log(`   New: ${newDeviceKeypair.publicKey()}`);
+
+      // For MVP, simulate recovery
+      console.log('✅ Recovery initiated (simulated)');
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ Recovery failed:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * SEP-30: Complete account recovery
+   */
+  async completeRecovery(
+    signedTransactionXDR: string
+  ): Promise<string> {
+    try {
+      console.log('✅ Submitting recovery transaction...');
+
+      const transaction = TransactionBuilder.fromXDR(
+        signedTransactionXDR,
+        this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC
+      );
+
+      const result = await this.server.submitTransaction(transaction as any);
+      console.log('✅ Account recovered successfully');
+      return result.hash;
+
+    } catch (error: any) {
+      console.error('❌ Recovery submission failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get recovery identities
+   */
+  getRecoveryIdentities(): RecoveryIdentity[] {
+    return this.recoveryIdentities;
+  }
+
+  /**
+   * Get recovery signers
+   */
+  getRecoverySigners(): RecoverySigner[] {
+    return this.recoverySigners;
+  }
+
+  /**
+   * Validate recovery auth method
+   */
+  private isValidAuthMethod(method: RecoveryAuthMethod): boolean {
+    switch (method.type) {
+      case 'email':
+        return this.isValidEmail(method.value);
+      case 'phone_number':
+        return this.isValidPhone(method.value);
+      case 'stellar_address':
+        return this.isValidStellarAddress(method.value);
+      default:
+        return false;
+    }
+  }
+
+  private isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  private isValidPhone(phone: string): boolean {
+    // E.164 format: +[country code][number]
+    return /^\+[1-9]\d{1,14}$/.test(phone);
+  }
+
+  private isValidStellarAddress(address: string): boolean {
+    return address.startsWith('G') && address.length === 56;
   }
 }

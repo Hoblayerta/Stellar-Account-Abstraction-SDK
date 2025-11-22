@@ -604,7 +604,7 @@ export default function Home() {
             {/* Actions */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
               <h3 className="text-xl font-semibold text-white mb-4">🚀 Account Actions</h3>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                 <button
                   onClick={() => {
                     setRecipientAddress(account.publicKey);
@@ -614,7 +614,7 @@ export default function Home() {
                 >
                   📝 Self Payment Test
                 </button>
-                
+
                 <button
                   onClick={() => {
                     window.open(`https://stellar.expert/explorer/testnet/account/${account.publicKey}`, '_blank');
@@ -623,8 +623,15 @@ export default function Home() {
                 >
                   🔍 View on Explorer
                 </button>
+
+                <a
+                  href="/recovery"
+                  className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
+                >
+                  🛡️ Setup Recovery
+                </a>
               </div>
-              
+
               <div className="mt-4 text-center text-green-300 text-sm">
                 ✅ Authenticated • ✅ Funded • ✅ Ready for transactions
               </div>

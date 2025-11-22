@@ -2,6 +2,8 @@ import { Asset, TransactionBuilder, Networks, Operation, Memo, Keypair, Horizon 
 
 class StellarSocialAccount {
     constructor(data, server, contractId, network, keypair) {
+        this.recoverySigners = [];
+        this.recoveryIdentities = [];
         this.data = data;
         this.server = server;
         this.contractId = contractId;
@@ -155,6 +157,171 @@ class StellarSocialAccount {
             console.error('Contract initialization failed:', error.message);
             return false;
         }
+    }
+    /**
+     * SEP-30: Register recovery identities
+     */
+    async registerRecoveryIdentity(identity) {
+        try {
+            console.log('🔐 Registering recovery identity...');
+            // Validate auth methods
+            for (const method of identity.authMethods) {
+                if (!this.isValidAuthMethod(method)) {
+                    throw new Error(`Invalid auth method: ${method.type}`);
+                }
+            }
+            this.recoveryIdentities.push(identity);
+            console.log(`✅ Recovery identity registered with ${identity.authMethods.length} auth method(s)`);
+            // In production, this would call SEP-30 recovery server API:
+            // POST /accounts/{address} with identity data
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Failed to register recovery identity:', error.message);
+            return false;
+        }
+    }
+    /**
+     * SEP-30: Add recovery signer
+     */
+    async addRecoverySigner(config) {
+        if (!this.keypair) {
+            throw new Error('No keypair available for signing transaction');
+        }
+        try {
+            console.log('🔑 Adding recovery signers...');
+            // Generate recovery server signers
+            const signers = [];
+            for (const serverConfig of config.servers) {
+                // In production, recovery server would generate this
+                const recoveryKeypair = Keypair.random();
+                signers.push({
+                    key: recoveryKeypair.publicKey(),
+                    added: new Date().toISOString()
+                });
+            }
+            // Build transaction to add signers
+            const account = await this.server.loadAccount(this.publicKey);
+            const txBuilder = new TransactionBuilder(account, {
+                fee: '100000',
+                networkPassphrase: this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC,
+            });
+            // Set account thresholds
+            txBuilder.addOperation(Operation.setOptions({
+                lowThreshold: config.accountThreshold.low,
+                medThreshold: config.accountThreshold.medium,
+                highThreshold: config.accountThreshold.high,
+            }));
+            // Add each recovery signer with appropriate weight
+            for (const signer of signers) {
+                txBuilder.addOperation(Operation.setOptions({
+                    signer: {
+                        ed25519PublicKey: signer.key,
+                        weight: config.signerWeight.recoveryServer
+                    }
+                }));
+            }
+            // Update device key weight
+            txBuilder.addOperation(Operation.setOptions({
+                signer: {
+                    ed25519PublicKey: this.publicKey,
+                    weight: config.signerWeight.device
+                }
+            }));
+            const transaction = txBuilder.setTimeout(300).build();
+            transaction.sign(this.keypair);
+            await this.server.submitTransaction(transaction);
+            this.recoverySigners = signers;
+            console.log(`✅ Added ${signers.length} recovery signer(s)`);
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Failed to add recovery signers:', error.message);
+            return false;
+        }
+    }
+    /**
+     * SEP-30: Initiate account recovery
+     */
+    async initiateRecovery(newDeviceKeypair, recoveryAuthMethods) {
+        try {
+            console.log('🔄 Initiating account recovery...');
+            // Verify recovery auth methods
+            for (const method of recoveryAuthMethods) {
+                const identity = this.recoveryIdentities.find(id => id.authMethods.some(am => am.type === method.type && am.value === method.value));
+                if (!identity) {
+                    throw new Error(`No registered recovery identity for ${method.type}: ${method.value}`);
+                }
+            }
+            // In production, this would:
+            // 1. Authenticate with recovery servers using auth methods
+            // 2. Request transaction signatures from recovery servers
+            // 3. Build transaction to replace device key
+            // 4. Submit multi-signed transaction
+            console.log('📝 Recovery transaction would replace device key:');
+            console.log(`   Old: ${this.publicKey}`);
+            console.log(`   New: ${newDeviceKeypair.publicKey()}`);
+            // For MVP, simulate recovery
+            console.log('✅ Recovery initiated (simulated)');
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Recovery failed:', error.message);
+            return false;
+        }
+    }
+    /**
+     * SEP-30: Complete account recovery
+     */
+    async completeRecovery(signedTransactionXDR) {
+        try {
+            console.log('✅ Submitting recovery transaction...');
+            const transaction = TransactionBuilder.fromXDR(signedTransactionXDR, this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC);
+            const result = await this.server.submitTransaction(transaction);
+            console.log('✅ Account recovered successfully');
+            return result.hash;
+        }
+        catch (error) {
+            console.error('❌ Recovery submission failed:', error.message);
+            throw error;
+        }
+    }
+    /**
+     * Get recovery identities
+     */
+    getRecoveryIdentities() {
+        return this.recoveryIdentities;
+    }
+    /**
+     * Get recovery signers
+     */
+    getRecoverySigners() {
+        return this.recoverySigners;
+    }
+    /**
+     * Validate recovery auth method
+     */
+    isValidAuthMethod(method) {
+        switch (method.type) {
+            case 'email':
+                return this.isValidEmail(method.value);
+            case 'phone_number':
+                return this.isValidPhone(method.value);
+            case 'stellar_address':
+                return this.isValidStellarAddress(method.value);
+            default:
+                return false;
+        }
+    }
+    isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+    isValidPhone(phone) {
+        // E.164 format: +[country code][number]
+        return /^\+[1-9]\d{1,14}$/.test(phone);
+    }
+    isValidStellarAddress(address) {
+        return address.startsWith('G') && address.length === 56;
     }
 }
 
@@ -7892,6 +8059,243 @@ class FreighterProvider {
 
 const DEFAULT_CONTRACT_ID = 'CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW';
 
+class EmailRecoveryProvider {
+    constructor(apiEndpoint = '/api/recovery/email') {
+        this.pendingVerifications = new Map();
+        this.apiEndpoint = apiEndpoint;
+    }
+    /**
+     * Send recovery code to email
+     */
+    async sendRecoveryCode(request) {
+        try {
+            console.log('📧 Sending recovery code to:', request.email);
+            // For MVP/demo: generate and store code locally
+            const code = this.generateCode();
+            this.pendingVerifications.set(request.email, code);
+            console.log(`🔑 Demo recovery code for ${request.email}: ${code}`);
+            console.log('📧 In production, this would send an email');
+            // In production, call API to send actual email
+            // await fetch(this.apiEndpoint + '/send', {
+            //   method: 'POST',
+            //   headers: { 'Content-Type': 'application/json' },
+            //   body: JSON.stringify({ email: request.email })
+            // });
+            return { success: true };
+        }
+        catch (error) {
+            console.error('❌ Failed to send recovery code:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Verify recovery code
+     */
+    async verifyRecoveryCode(verification) {
+        try {
+            console.log('🔍 Verifying recovery code for:', verification.email);
+            // For MVP: check against stored code
+            const storedCode = this.pendingVerifications.get(verification.email);
+            if (!storedCode) {
+                console.error('❌ No pending verification for this email');
+                return false;
+            }
+            if (storedCode !== verification.code) {
+                console.error('❌ Invalid recovery code');
+                return false;
+            }
+            // Clear after successful verification
+            this.pendingVerifications.delete(verification.email);
+            console.log('✅ Recovery code verified');
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Verification failed:', error.message);
+            return false;
+        }
+    }
+    /**
+     * Create SEP-30 auth method from verified email
+     */
+    createAuthMethod(email) {
+        return {
+            type: 'email',
+            value: email
+        };
+    }
+    /**
+     * Generate 6-digit recovery code
+     */
+    generateCode() {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+    /**
+     * Get pending code for demo/testing
+     */
+    getPendingCode(email) {
+        return this.pendingVerifications.get(email);
+    }
+}
+
+class GitHubRecoveryProvider {
+    constructor(clientId, clientSecret) {
+        if (!clientId) {
+            throw new Error('GitHub Client ID is required');
+        }
+        this.clientId = clientId;
+        this.clientSecret = clientSecret;
+    }
+    /**
+     * Get GitHub OAuth authorization URL
+     */
+    getAuthorizationUrl(redirectUri, state) {
+        const params = new URLSearchParams({
+            client_id: this.clientId,
+            redirect_uri: redirectUri,
+            scope: 'read:user user:email',
+        });
+        if (state) {
+            params.append('state', state);
+        }
+        return `https://github.com/login/oauth/authorize?${params.toString()}`;
+    }
+    /**
+     * Exchange authorization code for access token
+     */
+    async exchangeCodeForToken(request) {
+        try {
+            console.log('🔄 Exchanging GitHub code for token...');
+            // In browser environment, this should be done server-side to protect client_secret
+            // For demo, we'll use GitHub's OAuth API directly
+            const response = await fetch('https://github.com/login/oauth/access_token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    client_id: this.clientId,
+                    client_secret: this.clientSecret,
+                    code: request.code,
+                    redirect_uri: request.redirectUri,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(`GitHub token exchange failed: ${response.statusText}`);
+            }
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(`GitHub OAuth error: ${data.error_description || data.error}`);
+            }
+            console.log('✅ GitHub token obtained');
+            return data.access_token;
+        }
+        catch (error) {
+            console.error('❌ Token exchange failed:', error.message);
+            throw error;
+        }
+    }
+    /**
+     * Get GitHub user info using access token
+     */
+    async getUserInfo(accessToken) {
+        try {
+            console.log('👤 Fetching GitHub user info...');
+            const response = await fetch('https://api.github.com/user', {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`GitHub API error: ${response.statusText}`);
+            }
+            const userInfo = await response.json();
+            console.log('✅ GitHub user info obtained:', userInfo.login);
+            // If primary email is not public, fetch emails separately
+            if (!userInfo.email) {
+                userInfo.email = await this.getPrimaryEmail(accessToken);
+            }
+            return userInfo;
+        }
+        catch (error) {
+            console.error('❌ Failed to get user info:', error.message);
+            throw error;
+        }
+    }
+    /**
+     * Get primary email from GitHub (when not public)
+     */
+    async getPrimaryEmail(accessToken) {
+        try {
+            const response = await fetch('https://api.github.com/user/emails', {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                },
+            });
+            if (!response.ok) {
+                return null;
+            }
+            const emails = await response.json();
+            const primaryEmail = emails.find((e) => e.primary && e.verified);
+            return primaryEmail?.email || null;
+        }
+        catch {
+            return null;
+        }
+    }
+    /**
+     * Create SEP-30 auth method from GitHub user info
+     */
+    createAuthMethod(userInfo) {
+        // Use GitHub user ID as the identifier (more stable than email)
+        return {
+            type: 'email', // SEP-30 doesn't have 'github', so we use email
+            value: userInfo.email || `${userInfo.login}@users.noreply.github.com`
+        };
+    }
+    /**
+     * Generate deterministic identifier for GitHub user
+     */
+    generateIdentifier(userInfo) {
+        // Use GitHub ID for consistency (emails can change)
+        return `github:${userInfo.id}`;
+    }
+    /**
+     * Initiate OAuth flow (client-side)
+     */
+    initiateOAuth(redirectUri) {
+        if (typeof window === 'undefined') {
+            throw new Error('OAuth flow can only be initiated in browser environment');
+        }
+        const state = this.generateState();
+        const authUrl = this.getAuthorizationUrl(redirectUri, state);
+        // Store state for verification
+        sessionStorage.setItem('github_oauth_state', state);
+        // Redirect to GitHub
+        window.location.href = authUrl;
+    }
+    /**
+     * Generate random state for OAuth CSRF protection
+     */
+    generateState() {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+    /**
+     * Verify OAuth state (CSRF protection)
+     */
+    verifyState(state) {
+        if (typeof window === 'undefined')
+            return false;
+        const storedState = sessionStorage.getItem('github_oauth_state');
+        sessionStorage.removeItem('github_oauth_state');
+        return storedState === state;
+    }
+}
+
 class StellarSocialSDK {
     constructor(config) {
         this.contractId = config.contractId || DEFAULT_CONTRACT_ID;
@@ -8182,5 +8586,5 @@ class StellarSocialSDK {
     }
 }
 
-export { DEFAULT_CONTRACT_ID, StellarSocialAccount, StellarSocialSDK };
+export { DEFAULT_CONTRACT_ID, EmailRecoveryProvider, GitHubRecoveryProvider, StellarSocialAccount, StellarSocialSDK };
 //# sourceMappingURL=index.esm.js.map

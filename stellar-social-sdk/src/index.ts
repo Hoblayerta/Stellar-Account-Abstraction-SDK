@@ -387,4 +387,21 @@ export class StellarSocialSDK {
 // Export all types and classes
 export * from './types/index.js';
 export { StellarSocialAccount } from './auth/StellarSocialAccount.js';
+export { EmailRecoveryProvider } from './providers/EmailRecoveryProvider.js';
+export { GitHubRecoveryProvider, type GitHubUserInfo } from './providers/GitHubRecoveryProvider.js';
 export { DEFAULT_CONTRACT_ID } from './config.js';
+
+// Export recovery types explicitly
+export type {
+  RecoveryIdentityType,
+  RecoveryIdentity,
+  RecoveryAuthMethod,
+  RecoverySigner,
+  RecoveryAccountInfo,
+  RecoveryServerConfig,
+  RecoveryConfig,
+  EmailRecoveryRequest,
+  EmailRecoveryVerification,
+  GitHubRecoveryRequest,
+  RecoveryResult
+} from './types/recovery.js';
