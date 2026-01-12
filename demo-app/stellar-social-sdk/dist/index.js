@@ -35,7 +35,9 @@ class StellarSocialAccount {
                 amount,
             }));
             if (memo) {
-                txBuilder.addMemo(stellarSdk.Memo.text(memo));
+                // Stellar text memos have a 28-byte limit
+                const truncatedMemo = memo.length > 28 ? memo.substring(0, 28) : memo;
+                txBuilder.addMemo(stellarSdk.Memo.text(truncatedMemo));
             }
             const transaction = txBuilder.setTimeout(300).build();
             transaction.sign(this.keypair);
@@ -44,6 +46,73 @@ class StellarSocialAccount {
         }
         catch (error) {
             throw new Error(`Payment failed: ${error.message}`);
+        }
+    }
+    /**
+     * Send gasless payment - El sponsor paga las fees
+     * @param destination Dirección de destino
+     * @param amount Cantidad a enviar
+     * @param sponsorApiUrl URL del API endpoint del sponsor (default: /api/sponsor-transaction)
+     * @param asset Asset a enviar (default: XLM nativo)
+     * @param memo Memo opcional
+     */
+    async sendGaslessPayment(destination, amount, sponsorApiUrl = '/api/sponsor-transaction', asset = stellarSdk.Asset.native(), memo) {
+        if (!this.keypair) {
+            throw new Error('No keypair available for signing. Use social auth recovery.');
+        }
+        try {
+            console.log('💸 Creando transacción gasless...');
+            const account = await this.server.loadAccount(this.publicKey);
+            // Crear transacción con fee mínimo (el sponsor pagará el fee total con fee-bump)
+            const txBuilder = new stellarSdk.TransactionBuilder(account, {
+                fee: '100', // Fee mínimo requerido por Stellar
+                networkPassphrase: this.network === 'testnet' ? stellarSdk.Networks.TESTNET : stellarSdk.Networks.PUBLIC,
+            });
+            txBuilder.addOperation(stellarSdk.Operation.payment({
+                destination,
+                asset,
+                amount,
+            }));
+            if (memo) {
+                const truncatedMemo = memo.length > 28 ? memo.substring(0, 28) : memo;
+                txBuilder.addMemo(stellarSdk.Memo.text(truncatedMemo));
+            }
+            const transaction = txBuilder.setTimeout(300).build();
+            // Firmar la transacción original con la llave del usuario
+            transaction.sign(this.keypair);
+            // Enviar al sponsor para que agregue fee-bump
+            console.log('📤 Enviando transacción al sponsor...');
+            const response = await fetch(sponsorApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    transactionXDR: transaction.toXDR(),
+                }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al contactar al sponsor');
+            }
+            const { sponsoredTransactionXDR, sponsorPublicKey } = await response.json();
+            console.log('✅ Transacción patrocinada por:', sponsorPublicKey);
+            // Enviar la transacción patrocinada a la red
+            console.log('📡 Enviando transacción patrocinada a la red...');
+            const feeBumpTx = new stellarSdk.TransactionBuilder.fromXDR(sponsoredTransactionXDR, this.network === 'testnet' ? stellarSdk.Networks.TESTNET : stellarSdk.Networks.PUBLIC);
+            console.log('Fee-bump TX fee:', feeBumpTx.fee);
+            console.log('Inner TX fee:', feeBumpTx.innerTransaction?.fee);
+            const result = await this.server.submitTransaction(feeBumpTx);
+            console.log('✅ Transacción gasless completada!');
+            return {
+                hash: result.hash,
+                sponsorPublicKey
+            };
+        }
+        catch (error) {
+            console.error('❌ Error en transacción gasless:', error.message);
+            console.error('Error completo:', error.response?.data || error);
+            throw new Error(`Gasless payment failed: ${error.message}`);
         }
     }
     /**

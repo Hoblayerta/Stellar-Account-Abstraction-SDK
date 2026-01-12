@@ -119,6 +119,18 @@ declare class StellarSocialAccount {
      */
     sendPayment(destination: string, amount: string, asset?: Asset, memo?: string): Promise<string>;
     /**
+     * Send gasless payment - El sponsor paga las fees
+     * @param destination Dirección de destino
+     * @param amount Cantidad a enviar
+     * @param sponsorApiUrl URL del API endpoint del sponsor (default: /api/sponsor-transaction)
+     * @param asset Asset a enviar (default: XLM nativo)
+     * @param memo Memo opcional
+     */
+    sendGaslessPayment(destination: string, amount: string, sponsorApiUrl?: string, asset?: Asset, memo?: string): Promise<{
+        hash: string;
+        sponsorPublicKey: string;
+    }>;
+    /**
      * Add new authentication method - Simplified for MVP
      */
     addAuthMethod(newMethod: AuthMethod): Promise<boolean>;

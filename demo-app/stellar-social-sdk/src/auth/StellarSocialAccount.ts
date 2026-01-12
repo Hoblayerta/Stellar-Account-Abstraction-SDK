@@ -1,0 +1,228 @@
+import { 
+  Keypair, 
+  Horizon, 
+  TransactionBuilder, 
+  Networks, 
+  Operation, 
+  Asset,
+  Memo
+} from '@stellar/stellar-sdk';
+import { AuthMethod, SocialAccountData } from '../types/index.js';
+
+export class StellarSocialAccount {
+  private keypair?: Keypair;
+  private server: Horizon.Server;
+  private contractId: string;
+  private network: string;
+  public data: SocialAccountData;
+
+  constructor(
+    data: SocialAccountData,
+    server: Horizon.Server,
+    contractId: string,
+    network: string,
+    keypair?: Keypair
+  ) {
+    this.data = data;
+    this.server = server;
+    this.contractId = contractId;
+    this.network = network;
+    this.keypair = keypair;
+  }
+
+  get publicKey(): string {
+    return this.data.publicKey;
+  }
+
+  get authMethods(): AuthMethod[] {
+    return this.data.authMethods;
+  }
+
+  /**
+   * Send payment to another account
+   */
+  async sendPayment(
+    destination: string,
+    amount: string,
+    asset: Asset = Asset.native(),
+    memo?: string
+  ): Promise<string> {
+    if (!this.keypair) {
+      throw new Error('No keypair available for signing. Use social auth recovery.');
+    }
+
+    try {
+      const account = await this.server.loadAccount(this.publicKey);
+      
+      const txBuilder = new TransactionBuilder(account, {
+        fee: '100000',
+        networkPassphrase: this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC,
+      });
+
+      txBuilder.addOperation(
+        Operation.payment({
+          destination,
+          asset,
+          amount,
+        })
+      );
+
+      if (memo) {
+        // Stellar text memos have a 28-byte limit
+        const truncatedMemo = memo.length > 28 ? memo.substring(0, 28) : memo;
+        txBuilder.addMemo(Memo.text(truncatedMemo));
+      }
+
+      const transaction = txBuilder.setTimeout(300).build();
+      transaction.sign(this.keypair);
+
+      const result = await this.server.submitTransaction(transaction);
+      return result.hash;
+    } catch (error: any) {
+      throw new Error(`Payment failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send gasless payment - El sponsor paga las fees
+   * @param destination Dirección de destino
+   * @param amount Cantidad a enviar
+   * @param sponsorApiUrl URL del API endpoint del sponsor (default: /api/sponsor-transaction)
+   * @param asset Asset a enviar (default: XLM nativo)
+   * @param memo Memo opcional
+   */
+  async sendGaslessPayment(
+    destination: string,
+    amount: string,
+    sponsorApiUrl: string = '/api/sponsor-transaction',
+    asset: Asset = Asset.native(),
+    memo?: string
+  ): Promise<{ hash: string; sponsorPublicKey: string }> {
+    if (!this.keypair) {
+      throw new Error('No keypair available for signing. Use social auth recovery.');
+    }
+
+    try {
+      console.log('💸 Creando transacción gasless...');
+
+      const account = await this.server.loadAccount(this.publicKey);
+
+      // Crear transacción con fee mínimo (el sponsor pagará el fee total con fee-bump)
+      const txBuilder = new TransactionBuilder(account, {
+        fee: '100', // Fee mínimo requerido por Stellar
+        networkPassphrase: this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC,
+      });
+
+      txBuilder.addOperation(
+        Operation.payment({
+          destination,
+          asset,
+          amount,
+        })
+      );
+
+      if (memo) {
+        const truncatedMemo = memo.length > 28 ? memo.substring(0, 28) : memo;
+        txBuilder.addMemo(Memo.text(truncatedMemo));
+      }
+
+      const transaction = txBuilder.setTimeout(300).build();
+
+      // Firmar la transacción original con la llave del usuario
+      transaction.sign(this.keypair);
+
+      // Enviar al sponsor para que agregue fee-bump
+      console.log('📤 Enviando transacción al sponsor...');
+      const response = await fetch(sponsorApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionXDR: transaction.toXDR(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al contactar al sponsor');
+      }
+
+      const { sponsoredTransactionXDR, sponsorPublicKey } = await response.json();
+
+      console.log('✅ Transacción patrocinada por:', sponsorPublicKey);
+
+      // Enviar la transacción patrocinada a la red
+      console.log('📡 Enviando transacción patrocinada a la red...');
+      const feeBumpTx = new (TransactionBuilder as any).fromXDR(
+        sponsoredTransactionXDR,
+        this.network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC
+      );
+
+      console.log('Fee-bump TX fee:', feeBumpTx.fee);
+      console.log('Inner TX fee:', feeBumpTx.innerTransaction?.fee);
+
+      const result = await this.server.submitTransaction(feeBumpTx);
+
+      console.log('✅ Transacción gasless completada!');
+      return {
+        hash: result.hash,
+        sponsorPublicKey
+      };
+    } catch (error: any) {
+      console.error('❌ Error en transacción gasless:', error.message);
+      console.error('Error completo:', error.response?.data || error);
+      throw new Error(`Gasless payment failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Add new authentication method - Simplified for MVP
+   */
+  async addAuthMethod(newMethod: AuthMethod): Promise<boolean> {
+    // Para MVP, solo actualizar localmente
+    // En producción, llamar al contrato Soroban
+    this.data.authMethods.push(newMethod);
+    console.log(`✅ Added auth method: ${newMethod.type}`);
+    return true;
+  }
+
+  /**
+   * Get account balance
+   */
+  async getBalance(): Promise<{ balance: string; asset: string }[]> {
+    try {
+      const account = await this.server.loadAccount(this.publicKey);
+      return account.balances.map((balance: any) => ({
+        balance: balance.balance,
+        asset: balance.asset_type === 'native' ? 'XLM' : 
+               `${balance.asset_code}:${balance.asset_issuer}`
+      }));
+    } catch (error: any) {
+      throw new Error(`Failed to get balance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Initialize account with contract (for new accounts)
+   */
+  async initializeWithContract(): Promise<boolean> {
+    if (!this.keypair) {
+      console.log('⚠️ No keypair available, skipping contract initialization');
+      return true; // For MVP, this is OK
+    }
+
+    try {
+      console.log('🔧 Initializing account with social contract...');
+      
+      // For MVP, we'll skip the actual contract call
+      // In production, this would call the contract's initialize function
+      console.log(`✅ Account initialized: ${this.publicKey}`);
+      return true;
+      
+    } catch (error: any) {
+      console.error('Contract initialization failed:', error.message);
+      return false;
+    }
+  }
+}
