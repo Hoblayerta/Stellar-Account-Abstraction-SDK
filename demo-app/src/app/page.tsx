@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { StellarSocialSDK } from 'stellar-social-sdk';
 import toast, { Toaster } from 'react-hot-toast';
-import { 
-  CurrencyDollarIcon, 
-  GlobeAltIcon,
+import {
+  CurrencyDollarIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 
 const CONTRACT_ID = 'CALZGCSB3P3WEBLW3QTF5Y4WEALEVTYUYBC7KBGQ266GDINT7U4E74KW';
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -322,35 +322,35 @@ export default function Home() {
 
   if (!GOOGLE_CLIENT_ID) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 max-w-md">
-          <h1 className="text-2xl font-bold text-white mb-4">⚠️ Configuration Required</h1>
-          <p className="text-red-200 mb-4">Please add your Google Client ID to .env.local</p>
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-8 max-w-md shadow-lg">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">⚠️ Configuration Required</h1>
+          <p className="text-red-700 mb-4">Please add your Google Client ID to .env.local</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-white">
       <Toaster position="top-right" />
-      
+
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-md border-b border-white/20">
+      <header className="bg-white border-b border-purple-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
-                <GlobeAltIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white">Stellar Social</h1>
-                <p className="text-purple-200 text-sm">Real Social Login for Stellar</p>
-              </div>
+              <Image
+                src="/accesly-logo.png"
+                alt="Accesly"
+                width={140}
+                height={40}
+                className="object-contain"
+              />
             </div>
-            <div className="text-purple-200 text-xs flex items-center gap-2">
-              <CheckCircleIcon className="w-4 h-4 text-green-400" />
-              OAuth Ready
+            <div className="text-gray-600 text-xs flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-full">
+              <CheckCircleIcon className="w-4 h-4 text-purple-600" />
+              <span className="text-purple-700 font-medium">OAuth Ready</span>
             </div>
           </div>
         </div>
@@ -359,38 +359,38 @@ export default function Home() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {!account ? (
           <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Connect Your Real Accounts
             </h2>
-            <p className="text-xl text-purple-200 mb-8">
+            <p className="text-xl text-gray-600 mb-8">
               Authentic OAuth integration with deterministic Stellar addresses
             </p>
 
             <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto">
               {/* Social Login Card */}
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-                <h3 className="text-xl font-semibold text-white mb-6">🔐 Real OAuth Login</h3>
-                
+              <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-lg hover:shadow-xl transition-shadow">
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">🔐 Real OAuth Login</h3>
+
                 <div className="space-y-4">
                   {/* Google OAuth Button */}
                   <div className="space-y-2">
                     <div id="google-signin-button" className="w-full min-h-[48px] flex items-center justify-center">
                       {loading && (
-                        <div className="flex items-center gap-2 text-white">
-                          <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full"></div>
+                        <div className="flex items-center gap-2 text-purple-600">
+                          <div className="animate-spin h-5 w-5 border-2 border-purple-200 border-t-purple-600 rounded-full"></div>
                           Creating account...
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-purple-200 text-center">
+                    <p className="text-xs text-gray-500 text-center">
                       Uses Google Identity Services
                     </p>
-                    
+
                     {/* Alternative trigger button */}
                     <button
                       onClick={triggerGoogleLogin}
                       disabled={loading}
-                      className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm"
+                      className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm shadow-md hover:shadow-lg"
                     >
                       <span className="text-lg">🔄</span>
                       Trigger Google One Tap
@@ -398,35 +398,39 @@ export default function Home() {
                   </div>
 
                   <button
-                    onClick={handleFacebookAuth}
-                    disabled={loading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3"
+                    disabled={true}
+                    className="w-full bg-black hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-md relative"
                   >
-                    <span className="text-xl">📘</span>
-                    Facebook (Demo)
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                    </svg>
+                    <span>GitHub</span>
+                    <span className="absolute top-1 right-1 bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      SOON
+                    </span>
                   </button>
                 </div>
               </div>
 
               {/* Info Card */}
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-                <h3 className="text-xl font-semibold text-white mb-6">ℹ️ How it works</h3>
-                
-                <div className="space-y-3 text-purple-200 text-sm">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-6 border-2 border-purple-200 shadow-lg">
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">ℹ️ How it works</h3>
+
+                <div className="space-y-3 text-gray-700 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="text-green-400">1.</span>
+                    <span className="text-purple-600 font-bold">1.</span>
                     <span>Login with your real Google account</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-green-400">2.</span>
+                    <span className="text-purple-600 font-bold">2.</span>
                     <span>We generate your unique Stellar address</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-green-400">3.</span>
+                    <span className="text-purple-600 font-bold">3.</span>
                     <span>Same login = same address always</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-green-400">4.</span>
+                    <span className="text-purple-600 font-bold">4.</span>
                     <span>Start transacting on Stellar testnet</span>
                   </div>
                 </div>
@@ -435,9 +439,9 @@ export default function Home() {
 
             {loading && (
               <div className="mt-8 text-center">
-                <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl px-6 py-3">
-                  <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full"></div>
-                  <span className="text-white">Setting up your Stellar account...</span>
+                <div className="inline-flex items-center gap-3 bg-purple-50 border border-purple-200 rounded-xl px-6 py-3">
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-200 border-t-purple-600 rounded-full"></div>
+                  <span className="text-purple-900">Setting up your Stellar account...</span>
                 </div>
               </div>
             )}
@@ -445,12 +449,12 @@ export default function Home() {
         ) : (
           <div className="space-y-8">
             {/* Account Success */}
-            <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-md rounded-2xl p-6 border border-green-500/30">
+            <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-2xl p-6 border-2 border-purple-200 shadow-lg">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-white">🎉 Stellar Account Ready!</h3>
+                <h3 className="text-2xl font-bold text-gray-900">Account Ready!</h3>
                 <button
                   onClick={disconnect}
-                  className="bg-red-500/20 hover:bg-red-500/30 text-red-200 px-4 py-2 rounded-xl transition-all"
+                  className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-xl transition-all font-medium"
                 >
                   Disconnect
                 </button>
@@ -458,29 +462,29 @@ export default function Home() {
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-purple-200 text-sm mb-2">🌟 Your Stellar Address</label>
-                  <div className="bg-black/30 rounded-xl p-4 font-mono text-white text-sm break-all">
+                  <label className="block text-gray-700 font-medium text-sm mb-2">🌟 Your Stellar Address</label>
+                  <div className="bg-white border-2 border-purple-200 rounded-xl p-4 font-mono text-gray-800 text-sm break-all">
                     {account.publicKey}
                   </div>
-                  <p className="text-xs text-green-300 mt-1">
+                  <p className="text-xs text-purple-600 mt-1 font-medium">
                     ✓ Deterministic • ✓ Always the same for your Google account
                   </p>
                 </div>
-                
+
                 <div>
-                  <label className="block text-purple-200 text-sm mb-2">👤 Account Info</label>
-                  <div className="bg-black/30 rounded-xl p-3 text-white text-sm">
+                  <label className="block text-gray-700 font-medium text-sm mb-2">👤 Account Info</label>
+                  <div className="bg-white border-2 border-purple-200 rounded-xl p-3 text-gray-800 text-sm">
                     {account.data.authMethods.map((method: { type: string; metadata?: { name?: string; email?: string } }, index: number) => (
                       <div key={index} className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-green-400">✓</span>
+                          <span className="text-purple-600">✓</span>
                           <span className="capitalize font-medium">{method.type}</span>
                         </div>
                         {method.metadata?.name && (
-                          <div className="text-purple-200">👤 {method.metadata.name}</div>
+                          <div className="text-gray-600">👤 {method.metadata.name}</div>
                         )}
                         {method.metadata?.email && (
-                          <div className="text-purple-200">📧 {method.metadata.email}</div>
+                          <div className="text-gray-600">📧 {method.metadata.email}</div>
                         )}
                       </div>
                     ))}
@@ -490,36 +494,36 @@ export default function Home() {
             </div>
 
             {/* Balances */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-semibold text-white mb-4">💰 Testnet Balances</h3>
+            <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-lg">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Testnet Balances</h3>
               <div className="space-y-3">
                 {balances.map((balance, index) => (
-                  <div key={index} className="flex items-center justify-between bg-black/30 rounded-xl p-4">
+                  <div key={index} className="flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
                     <div className="flex items-center gap-3">
-                      <CurrencyDollarIcon className="w-6 h-6 text-yellow-400" />
-                      <span className="text-white font-medium">{balance.asset}</span>
+                      <CurrencyDollarIcon className="w-6 h-6 text-purple-600" />
+                      <span className="text-gray-900 font-medium">{balance.asset}</span>
                     </div>
-                    <span className="text-2xl font-bold text-white">{parseFloat(balance.balance).toLocaleString()}</span>
+                    <span className="text-2xl font-bold text-purple-700">{parseFloat(balance.balance).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Send Payment */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-semibold text-white mb-4">💸 Send XLM Payment</h3>
+            <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-lg">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Send XLM Payment</h3>
 
               <div className="space-y-4">
                 {/* Gasless Toggle */}
-                <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 rounded-xl p-4">
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 border-2 border-purple-200 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-white font-medium">
+                        <span className="text-gray-900 font-medium">
                           {useGasless ? '⚡ Gasless Mode' : '💳 Normal Mode'}
                         </span>
                       </div>
-                      <p className="text-purple-200 text-xs">
+                      <p className="text-gray-600 text-xs">
                         {useGasless
                           ? 'El sponsor pagará las fees de esta transacción'
                           : 'Tú pagarás las fees (~0.00001 XLM)'}
@@ -528,7 +532,7 @@ export default function Home() {
                     <button
                       onClick={() => setUseGasless(!useGasless)}
                       className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                        useGasless ? 'bg-green-500' : 'bg-gray-600'
+                        useGasless ? 'bg-[#7C3AED]' : 'bg-gray-400'
                       }`}
                     >
                       <span
@@ -539,7 +543,7 @@ export default function Home() {
                     </button>
                   </div>
                   {useGasless && (
-                    <div className="mt-2 text-green-300 text-xs flex items-center gap-1">
+                    <div className="mt-2 text-purple-700 text-xs flex items-center gap-1 font-medium">
                       <span>✓</span>
                       <span>Esta transacción será patrocinada por el desarrollador</span>
                     </div>
@@ -548,23 +552,23 @@ export default function Home() {
 
                 {/* Recipient Address */}
                 <div>
-                  <label className="block text-purple-200 text-sm mb-2">Recipient Stellar Address</label>
+                  <label className="block text-gray-700 font-medium text-sm mb-2">Recipient Stellar Address</label>
                   <input
                     type="text"
                     value={recipientAddress}
                     onChange={(e) => setRecipientAddress(e.target.value)}
                     placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                    className="w-full bg-black/30 border border-white/20 rounded-xl p-3 text-white font-mono text-sm placeholder-white/40 focus:border-purple-400 focus:outline-none"
+                    className="w-full bg-white border-2 border-purple-200 rounded-xl p-3 text-gray-900 font-mono text-sm placeholder-gray-400 focus:border-purple-500 focus:outline-none transition-colors"
                     maxLength={56}
                   />
                   {recipientAddress && !isValidStellarAddress(recipientAddress) && (
-                    <p className="text-red-300 text-xs mt-1">Invalid Stellar address format</p>
+                    <p className="text-red-500 text-xs mt-1 font-medium">Invalid Stellar address format</p>
                   )}
                 </div>
 
                 {/* Amount */}
                 <div>
-                  <label className="block text-purple-200 text-sm mb-2">Amount (XLM)</label>
+                  <label className="block text-gray-700 font-medium text-sm mb-2">Amount (XLM)</label>
                   <input
                     type="number"
                     value={paymentAmount}
@@ -572,7 +576,7 @@ export default function Home() {
                     placeholder="1.0"
                     min="0.000001"
                     step="0.1"
-                    className="w-full bg-black/30 border border-white/20 rounded-xl p-3 text-white text-sm placeholder-white/40 focus:border-purple-400 focus:outline-none"
+                    className="w-full bg-white border-2 border-purple-200 rounded-xl p-3 text-gray-900 text-sm placeholder-gray-400 focus:border-purple-500 focus:outline-none transition-colors"
                   />
                 </div>
 
@@ -582,9 +586,9 @@ export default function Home() {
                   disabled={sendingPayment || !recipientAddress.trim() || !isValidStellarAddress(recipientAddress) || parseFloat(paymentAmount) <= 0}
                   className={`w-full ${
                     useGasless
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600'
-                      : 'bg-green-500 hover:bg-green-600'
-                  } disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3`}
+                      ? 'bg-gradient-to-r from-[#7C3AED] to-[#6D28D9] hover:from-[#6D28D9] hover:to-[#5B21B6]'
+                      : 'bg-[#7C3AED] hover:bg-[#6D28D9]'
+                  } disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3 shadow-md hover:shadow-lg`}
                 >
                   {sendingPayment ? (
                     <>
@@ -593,7 +597,6 @@ export default function Home() {
                     </>
                   ) : (
                     <>
-                      {useGasless ? '⚡' : <CurrencyDollarIcon className="w-5 h-5" />}
                       {useGasless ? `Send ${paymentAmount} XLM (Gasless)` : `Send ${paymentAmount} XLM`}
                     </>
                   )}
@@ -602,30 +605,19 @@ export default function Home() {
             </div>
 
             {/* Actions */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-semibold text-white mb-4">🚀 Account Actions</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    setRecipientAddress(account.publicKey);
-                    setPaymentAmount('0.1');
-                  }}
-                  className="bg-purple-500 hover:bg-purple-600 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
-                >
-                  📝 Self Payment Test
-                </button>
-                
-                <button
-                  onClick={() => {
-                    window.open(`https://stellar.expert/explorer/testnet/account/${account.publicKey}`, '_blank');
-                  }}
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3"
-                >
-                  🔍 View on Explorer
-                </button>
-              </div>
-              
-              <div className="mt-4 text-center text-green-300 text-sm">
+            <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-lg">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Account Actions</h3>
+
+              <button
+                onClick={() => {
+                  window.open(`https://stellar.expert/explorer/testnet/account/${account.publicKey}`, '_blank');
+                }}
+                className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-3 shadow-md hover:shadow-lg"
+              >
+                🔍 View on Explorer
+              </button>
+
+              <div className="mt-4 text-center text-purple-700 text-sm font-medium">
                 ✅ Authenticated • ✅ Funded • ✅ Ready for transactions
               </div>
             </div>
